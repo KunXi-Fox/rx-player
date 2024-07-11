@@ -35,17 +35,27 @@ import {
   NATIVE_VTT_PARSER,
   SMOOTH,
 } from "./features/list";
+
+import { MULTI_THREAD } from "./experimental/features";
+
+import { EMBEDDED_WORKER } from "./__GENERATED_CODE";
+
 import logger from "./log";
 import Player from "./main_thread/api";
 import globalScope from "./utils/global_scope";
 
 patchWebkitSourceBuffer();
 
+Player.Embeds = {
+  EMBEDDED_WORKER,
+};
+
 Player.addFeatures([
   SMOOTH,
   DASH,
   DIRECTFILE,
   EME,
+  MULTI_THREAD,
   NATIVE_TTML_PARSER,
   NATIVE_SAMI_PARSER,
   NATIVE_VTT_PARSER,

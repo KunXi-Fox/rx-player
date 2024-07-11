@@ -42,6 +42,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const shouldWatch = args.includes("-w") || args.includes("--watch");
   const shouldMinify = args.includes("-m") || args.includes("--minify");
   const production = args.includes("-p") || args.includes("--production-mode");
+  const globalScope = args.includes("-g") || args.includes("--global");
   const silent = args.includes("-s") || args.includes("--silent");
 
   let outfile;
@@ -68,6 +69,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       production,
       silent,
       outfile,
+      globalScope,
     });
   } catch (err) {
     console.error(`ERROR: ${err}\n`);
