@@ -43,7 +43,6 @@ import { ErrorCodes, ErrorTypes, formatError, MediaError } from "../../errors";
 import WorkerInitializationError from "../../errors/worker_initialization_error";
 import type { IFeature } from "../../features";
 import features, { addFeatures } from "../../features";
-import { IFeatureObject } from "../../features/types";
 import log from "../../log";
 import type {
   IDecipherabilityStatusChangedElement,
