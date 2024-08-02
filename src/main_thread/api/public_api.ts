@@ -348,7 +348,6 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     addFeatures(featureList);
   }
 
-  static Embeds: Record<string, Blob | ArrayBufferLike> = {};
   /**
    * Register the video element to the set of elements currently in use.
    * @param videoElement the video element to register.
