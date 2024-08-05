@@ -347,6 +347,8 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     addFeatures(featureList);
   }
 
+  static Features: IFeature[] = [];
+
   /**
    * Register the video element to the set of elements currently in use.
    * @param videoElement the video element to register.
