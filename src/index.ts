@@ -43,7 +43,7 @@ import globalScope from "./utils/global_scope";
 
 patchWebkitSourceBuffer();
 
-Player.Features = [MULTI_THREAD, DIRECTFILE, SMOOTH];
+Player.Features = { MULTI_THREAD, DIRECTFILE, SMOOTH };
 
 Player.addFeatures([
   DASH,

@@ -159,6 +159,11 @@ export default async function runBundler(inputFile, options) {
       entryPoints: [inputFile],
       bundle: true,
       target: "es2017",
+      banner: {
+        // polyfill for getOwnPropertyDescriptors (SamSung 2017 not support it)
+        // for references https://github.com/evanw/esbuild/issues/1892
+        js: 'Object.hasOwnProperty("getOwnPropertyDescriptors")||Object.defineProperty(Object,"getOwnPropertyDescriptors",{configurable:!0,writable:!0,value:function(e){return Reflect.ownKeys(e).reduce(function(t,n){return Object.defineProperty(t,n,{configurable:!0,enumerable:!0,writable:!0,value:Object.getOwnPropertyDescriptor(e,n)})},{})}})'
+      },
       minify,
       write: outfile !== undefined,
       outfile,
