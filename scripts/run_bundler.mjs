@@ -162,7 +162,7 @@ export default async function runBundler(inputFile, options) {
       banner: {
         // polyfill for getOwnPropertyDescriptors (SamSung 2017 not support it)
         // for references https://github.com/evanw/esbuild/issues/1892
-        js: 'Object.hasOwnProperty("getOwnPropertyDescriptors")||Object.defineProperty(Object,"getOwnPropertyDescriptors",{configurable:!0,writable:!0,value:function(e){return Reflect.ownKeys(e).reduce(function(t,n){return Object.defineProperty(t,n,{configurable:!0,enumerable:!0,writable:!0,value:Object.getOwnPropertyDescriptor(e,n)})},{})}})'
+        js: 'Object.hasOwnProperty("getOwnPropertyDescriptors")||Object.defineProperty(Object,"getOwnPropertyDescriptors",{configurable:!0,writable:!0,value:function(r){if(null==r)throw TypeError("Cannot convert undefined or null to object");var e=Object.getOwnPropertyDescriptor(r,"__proto__"),t=e?((a="__proto__")in(l={})?Object.defineProperty(l,a,{value:e,enumerable:!0,configurable:!0,writable:!0}):l[a]=e,l):{},o=!0,n=!1,i=void 0;try{for(var l,a,c,p=Object.getOwnPropertyNames(r)[Symbol.iterator]();!(o=(c=p.next()).done);o=!0){var b=c.value;t[b]=Object.getOwnPropertyDescriptor(r,b)}}catch(r){n=!0,i=r}finally{try{o||null==p.return||p.return()}finally{if(n)throw i}}return t}});'
       },
       minify,
       write: outfile !== undefined,
