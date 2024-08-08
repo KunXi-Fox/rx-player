@@ -37,6 +37,7 @@ const BUILD_ARTEFACTS_TO_REMOVE = [
 
 const WORKER_IN_FILE = path.join(ROOT_DIR, "src/worker_entry_point.ts");
 const WORKER_OUT_FILE = path.join(ROOT_DIR, "dist/worker.js");
+const ES5_WORKER_OUT_FILE = path.join(ROOT_DIR, "dist/worker.es5.js");
 
 // If true, this script is called directly
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -86,6 +87,7 @@ async function generateBuild(options = {}) {
         watch: false,
         minify: !devMode,
         outfile: WORKER_OUT_FILE,
+        es5Outfile: ES5_WORKER_OUT_FILE,
         production: !devMode,
         silent: true,
       }),
