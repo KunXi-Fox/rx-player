@@ -1,5 +1,43 @@
 # Changelog
 
+## Current dev build: v4.2.0-dev.2024090300
+
+### Features
+
+- Add `cmcd` object to `loadVideo` options to enable CMCD (Common Media Client Data)
+  [#1461]
+- Add `checkManifestIntegrity` `loadVideo` option as a temporary work-around when you
+  suspect your packager or CDN to sometimes deliver corrupted data [#1471]
+- Add `contentProtections` to the `representations` of the tracks API to know if they're
+  considered encrypted [#1505]
+- Add `filterPlayableRepresentations` property to audio and video tracks API to get
+  information on ALL representations, even those that won't be played [#1501]
+- Add `LogFormat` static property to the `RxPlayer` to try improving on bug reports
+  [#1469]
+
+### Bug fixes
+
+- Detect cases where an encrypted media's codec is not supported specifically when the
+  media is encrypted and prevent the playback of such contents [#1484]
+- Work-around the "hulu issue" seen on firefox 129 and 130 (`1911283` and `1912238` on
+  bugzilla) which also impacted the RxPlayer [#1495, #1498]
+- Fix rare cases where the active Period would not be advertised by the RxPlayer [#1502]
+- DRM/Compat: Re-create MediaKeys for each content on Philips' NETTV [#1515]
+- DRM/Compat: fix content not starting on Safari because key are never considered usable
+  for a track [#1479, #1512]
+- MULTI_THREAD: fix wrong Period considered as current in multi-Period DASH contents with
+  the multi-thread feature [#1527]
+
+### Other improvements
+
+- DASH: provide a more precize calculation for the timeshift buffer depth [#1483]
+- Handle `hev1` codec and `hvc1` codecs as part of the same family of codecs when trying
+  to check for compatibility between the two [#1499]
+- Code: Forbid the direct usage of MSE and HTML5 media TypeScript type in profit of our
+  own compatible ones to facilitate testing and the addition of platform-specific
+  differences [#1397].
+- Demo: Remove standalone demo as we never relied on it [#1473]
+
 ## v4.1.0 (2024-07-08)
 
 ### Features

@@ -511,7 +511,7 @@ function loadOrReloadPreparedContent(
     mediaSource,
     representationEstimator,
     segmentSinksStore,
-    segmentFetcherCreator,
+    segmentQueueCreator,
   } = preparedContent;
   const { drmSystemId, enableFastSwitching, initialTime, onCodecSwitch } = val;
   playbackObservationRef.onUpdate((observation) => {
@@ -586,7 +586,7 @@ function loadOrReloadPreparedContent(
     playbackObserver,
     representationEstimator,
     segmentSinksStore,
-    segmentFetcherCreator,
+    segmentQueueCreator,
     {
       wantedBufferAhead,
       maxVideoBufferSize,
@@ -744,6 +744,7 @@ function loadOrReloadPreparedContent(
           }
         }
 
+        contentTimeBoundariesObserver.onPeriodCleared(value.type, value.period);
         preparedContent.trackChoiceSetter.removeTrackSetter(value.period.id, value.type);
         sendMessage({
           type: WorkerMessageType.PeriodStreamCleared,

@@ -37,15 +37,15 @@ class Representation implements IRepresentationMetadata {
   /** ID uniquely identifying the Representation in its parent Adaptation. */
   public readonly id: string;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.uniqueId
    */
   public readonly uniqueId: string;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.bitrate
    */
   public bitrate: number;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.frameRate
    */
   public frameRate?: number;
   /**
@@ -65,39 +65,47 @@ class Representation implements IRepresentationMetadata {
    */
   public cdnMetadata: ICdnMetadata[] | null;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.isSpatialAudio
    */
   public isSpatialAudio?: boolean | undefined;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.codecs
    */
   public codecs: string[];
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.mimeType
    */
   public mimeType?: string;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.width
    */
   public width?: number;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.height
    */
   public height?: number;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.contentProtections
    */
   public contentProtections?: IContentProtections;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.hdrInfo
    */
   public hdrInfo?: IHDRInformation;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.decipherable
+   *
+   * Note that this property should __NEVER__ be updated directly on an
+   * instanciated `Representation`, you are supposed to rely on
+   * `Manifest` methods for this.
    */
   public decipherable?: boolean | undefined;
   /**
-   * @see IRepresentationMetadata
+   * @see IRepresentationMetadata.isSupported
+   *
+   * Note that this property should __NEVER__ be updated directly on an
+   * instanciated `Representation`, you are supposed to rely on
+   * `Manifest` methods for this.
    */
   public isSupported: boolean | undefined;
   /**
@@ -281,7 +289,7 @@ class Representation implements IRepresentationMetadata {
       for (let j = 0; j < initData.values.length; j++) {
         if (initData.values[j].systemId.toLowerCase() === drmSystemId.toLowerCase()) {
           if (!createdObjForType) {
-            const keyIds = this.contentProtections?.keyIds?.map((val) => val.keyId);
+            const keyIds = this.contentProtections?.keyIds;
             filtered.push({
               type: initData.type,
               keyIds,
@@ -330,7 +338,7 @@ class Representation implements IRepresentationMetadata {
     ) {
       return [];
     }
-    const keyIds = this.contentProtections?.keyIds?.map((val) => val.keyId);
+    const keyIds = this.contentProtections?.keyIds;
     return this.contentProtections.initData.map((x) => {
       return { type: x.type, keyIds, values: x.values };
     });
@@ -363,7 +371,7 @@ class Representation implements IRepresentationMetadata {
     let hasUpdatedProtectionData = false;
     if (this.contentProtections === undefined) {
       this.contentProtections = {
-        keyIds: keyId !== undefined ? [{ keyId }] : [],
+        keyIds: keyId !== undefined ? [keyId] : [],
         initData: [{ type: initDataType, values: data }],
       };
       return true;
@@ -372,17 +380,17 @@ class Representation implements IRepresentationMetadata {
     if (keyId !== undefined) {
       const keyIds = this.contentProtections.keyIds;
       if (keyIds === undefined) {
-        this.contentProtections.keyIds = [{ keyId }];
+        this.contentProtections.keyIds = [keyId];
       } else {
         let foundKeyId = false;
         for (const knownKeyId of keyIds) {
-          if (areArraysOfNumbersEqual(knownKeyId.keyId, keyId)) {
+          if (areArraysOfNumbersEqual(knownKeyId, keyId)) {
             foundKeyId = true;
           }
         }
         if (!foundKeyId) {
           log.warn("Manifest: found unanounced key id.");
-          keyIds.push({ keyId });
+          keyIds.push(keyId);
         }
       }
     }

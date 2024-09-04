@@ -25,7 +25,7 @@ import type {
 } from "../../core/adaptive";
 import AdaptiveRepresentationSelector from "../../core/adaptive";
 import CmcdDataBuilder from "../../core/cmcd";
-import { ManifestFetcher, SegmentFetcherCreator } from "../../core/fetchers";
+import { ManifestFetcher, SegmentQueueCreator } from "../../core/fetchers";
 import createContentTimeBoundariesObserver from "../../core/main/common/create_content_time_boundaries_observer";
 import DecipherabilityFreezeDetector from "../../core/main/common/DecipherabilityFreezeDetector";
 import SegmentSinksStore from "../../core/segment_sinks";
@@ -429,7 +429,7 @@ export default class MediaSourceContentInitializer extends ContentInitializer {
       bufferOptions,
     );
 
-    const segmentFetcherCreator = new SegmentFetcherCreator(
+    const segmentQueueCreator = new SegmentQueueCreator(
       transport,
       this._cmcdDataBuilder,
       segmentRequestOptions,
@@ -478,7 +478,7 @@ export default class MediaSourceContentInitializer extends ContentInitializer {
         autoPlay: shouldPlay,
         manifest,
         representationEstimator,
-        segmentFetcherCreator,
+        segmentQueueCreator,
         speed,
         bufferOptions: subBufferOptions,
       };
@@ -538,7 +538,7 @@ export default class MediaSourceContentInitializer extends ContentInitializer {
       mediaSource,
       playbackObserver,
       representationEstimator,
-      segmentFetcherCreator,
+      segmentQueueCreator,
       speed,
     } = args;
 
@@ -768,7 +768,7 @@ export default class MediaSourceContentInitializer extends ContentInitializer {
       coreObserver,
       representationEstimator,
       segmentSinksStore,
-      segmentFetcherCreator,
+      segmentQueueCreator,
       bufferOptions,
       handleStreamOrchestratorCallbacks(),
       cancelSignal,
@@ -1223,7 +1223,7 @@ interface IBufferingMediaSettings {
   /** Estimate the right Representation. */
   representationEstimator: IRepresentationEstimator;
   /** Module to facilitate segment fetching. */
-  segmentFetcherCreator: SegmentFetcherCreator;
+  segmentQueueCreator: SegmentQueueCreator;
   /** Last wanted playback rate. */
   speed: IReadOnlySharedReference<number>;
   /** `MediaSource` element on which the media will be buffered. */
@@ -1267,17 +1267,17 @@ function updateKeyIdsDecipherabilityOnManifest(
     if (contentKIDs !== undefined) {
       for (const elt of contentKIDs) {
         for (const blacklistedKeyId of blacklistedKeyIds) {
-          if (areArraysOfNumbersEqual(blacklistedKeyId, elt.keyId)) {
+          if (areArraysOfNumbersEqual(blacklistedKeyId, elt)) {
             return false;
           }
         }
         for (const whitelistedKeyId of whitelistedKeyIds) {
-          if (areArraysOfNumbersEqual(whitelistedKeyId, elt.keyId)) {
+          if (areArraysOfNumbersEqual(whitelistedKeyId, elt)) {
             return true;
           }
         }
         for (const delistedKeyId of delistedKeyIds) {
-          if (areArraysOfNumbersEqual(delistedKeyId, elt.keyId)) {
+          if (areArraysOfNumbersEqual(delistedKeyId, elt)) {
             return undefined;
           }
         }
