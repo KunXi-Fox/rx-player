@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* eslint-env node */
 
 /**
  * =================
@@ -24,7 +23,7 @@ import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import generateEmbeds from "./generate_embeds.mjs";
 import runBundler from "./run_bundler.mjs";
-import removeDir from "./remove_dir.mjs";
+import removeDir from "./utils/remove_dir.mjs";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -169,14 +168,10 @@ function spawnProm(command, args, errorOnCode) {
  * script.
  */
 function displayHelp() {
-  /* eslint-disable no-console */
   console.log(
-    /* eslint-disable indent */
     `Usage: node build_worker.mjs [options]
 Options:
   -h, --help             Display this help
   -p, --dev-mode         Build all files in development mode (more runtime checks, worker not minified)`,
-    /* eslint-enable indent */
   );
-  /* eslint-enable no-console */
 }

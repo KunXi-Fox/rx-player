@@ -1133,11 +1133,12 @@ class Player extends EventEmitter<IPublicAPIEvent> {
             .getValue()
             .position.getPolled();
           break;
-        default:
+        default: {
           const o = playbackObserver.getReference().getValue();
           this._priv_reloadingMetadata.reloadInPause = o.paused;
           this._priv_reloadingMetadata.reloadPosition = o.position.getWanted();
           break;
+        }
       }
     };
 
@@ -1279,11 +1280,11 @@ class Player extends EventEmitter<IPublicAPIEvent> {
    * @returns {HTMLMediaElement|null} - The HTMLMediaElement used (`null` when
    * disposed)
    */
-  /* eslint-disable @typescript-eslint/no-restricted-types */
+  // eslint-disable-next-line @typescript-eslint/no-restricted-types
   getVideoElement(): HTMLMediaElement | null {
+    // eslint-disable-next-line @typescript-eslint/no-restricted-types
     return this.videoElement as HTMLMediaElement;
   }
-  /* eslint-enable @typescript-eslint/no-restricted-types */
 
   /**
    * Returns the player's current state.
@@ -1618,9 +1619,8 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
 
     const playPromise = this.videoElement.play();
-    /* eslint-disable @typescript-eslint/unbound-method */
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     if (isNullOrUndefined(playPromise) || typeof playPromise.catch !== "function") {
-      /* eslint-enable @typescript-eslint/unbound-method */
       return Promise.resolve();
     }
     return playPromise.catch((error: Error) => {
@@ -2099,7 +2099,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         const audioId = typeof arg === "string" ? arg : arg.trackId;
         mediaElementTracksStore?.setAudioTrackById(audioId);
         return;
-      } catch (e) {
+      } catch (_e) {
         throw new Error("player: unknown audio track");
       }
     }
@@ -2145,7 +2145,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         const textId = typeof arg === "string" ? arg : arg.trackId;
         mediaElementTracksStore?.setTextTrackById(textId);
         return;
-      } catch (e) {
+      } catch (_e) {
         throw new Error("player: unknown text track");
       }
     }
@@ -2197,7 +2197,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         const videoId = typeof arg === "string" ? arg : arg.trackId;
         mediaElementTracksStore?.setVideoTrackById(videoId);
         return;
-      } catch (e) {
+      } catch (_e) {
         throw new Error("player: unknown video track");
       }
     }
@@ -2927,7 +2927,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         return;
       }
       switch (type) {
-        case "audio":
+        case "audio": {
           const audioTrack = tracksStore.getChosenAudioTrack(periodRef, true);
           this._priv_triggerEventIfNotStopped(
             "audioTrackChange",
@@ -2935,11 +2935,13 @@ class Player extends EventEmitter<IPublicAPIEvent> {
             cancelSignal,
           );
           break;
-        case "text":
+        }
+        case "text": {
           const textTrack = tracksStore.getChosenTextTrack(periodRef);
           this._priv_triggerEventIfNotStopped("textTrackChange", textTrack, cancelSignal);
           break;
-        case "video":
+        }
+        case "video": {
           const videoTrack = tracksStore.getChosenVideoTrack(periodRef, true);
           this._priv_triggerEventIfNotStopped(
             "videoTrackChange",
@@ -2947,6 +2949,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
             cancelSignal,
           );
           break;
+        }
       }
     }
   }
@@ -3030,9 +3033,9 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
     this.trigger(
       // !!! undocumented API :O !!!
-      /* eslint-disable-next-line */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       "__priv_bitrateEstimateChange" as any,
-      /* eslint-disable-next-line */
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { type, bitrate } as any,
     );
   }
@@ -3251,7 +3254,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
       return;
     }
     switch (trackType) {
-      case "video":
+      case "video": {
         const videoTracks = tracksStore.getAvailableVideoTracks(periodRef, true);
         this._priv_triggerEventIfNotStopped(
           "availableVideoTracksChange",
@@ -3259,7 +3262,8 @@ class Player extends EventEmitter<IPublicAPIEvent> {
           cancelSignal,
         );
         break;
-      case "audio":
+      }
+      case "audio": {
         const audioTracks = tracksStore.getAvailableAudioTracks(periodRef, true);
         this._priv_triggerEventIfNotStopped(
           "availableAudioTracksChange",
@@ -3267,7 +3271,8 @@ class Player extends EventEmitter<IPublicAPIEvent> {
           cancelSignal,
         );
         break;
-      case "text":
+      }
+      case "text": {
         const textTracks = tracksStore.getAvailableTextTracks(periodRef);
         this._priv_triggerEventIfNotStopped(
           "availableTextTracksChange",
@@ -3275,6 +3280,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
           cancelSignal,
         );
         break;
+      }
       default:
         assertUnreachable(trackType);
     }

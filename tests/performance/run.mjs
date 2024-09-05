@@ -9,7 +9,7 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 import launchStaticServer from "../../scripts/launch_static_server.mjs";
 import getHumanReadableHours from "../../scripts/utils/get_human_readable_hours.mjs";
-import removeDir from "../../scripts/remove_dir.mjs";
+import removeDir from "../../scripts/utils/remove_dir.mjs";
 import { createContentServer } from "../contents/server.mjs";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -233,7 +233,7 @@ async function linkCurrentRxPlayer() {
  * @returns {Promise}
  */
 async function linkLastRxPlayer() {
-  await removeFile(path.join(currentDirectory, "node_modules"));
+  await removeDir(path.join(currentDirectory, "node_modules"));
   await spawnProc(
     "npm install",
     ["--prefix", currentDirectory, "rx-player"],
@@ -454,7 +454,7 @@ function createResultServer() {
         try {
           const parsedBody = JSON.parse(body);
           if (parsedBody.type === "log") {
-            /* eslint-disable-next-line no-console */
+            // eslint-disable-next-line no-console
             console.log("LOG:", parsedBody.data);
           } else if (parsedBody.type === "done") {
             if (currentBrowser !== undefined) {
