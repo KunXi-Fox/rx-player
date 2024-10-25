@@ -133,8 +133,11 @@ export default async function runBundler(inputFile, options) {
     setup(build) {
       build.onStart(() => logWarning(`Bundling of ${inputFile} started`));
       build.onEnd((result) => {
-        if (watch && es5Outfile !== undefined) {
-          buildAndAnnounceEs5Bundle(result?.outputFiles?.[0]?.contents, es5Outfile);
+        if (watch && outfile !== undefined && es5Outfile !== undefined) {
+          const contents = fs.readFileSync(outfile);
+          const inputSourceMap = new TextDecoder().decode(fs.readFileSync(outfile+'.map'));
+
+          buildAndAnnounceEs5Bundle(contents, inputSourceMap, es5Outfile);
         }
         if (result.errors.length > 0 || result.warnings.length > 0) {
           const { errors, warnings } = result;
@@ -165,8 +168,8 @@ export default async function runBundler(inputFile, options) {
         js: 'Object.hasOwnProperty("getOwnPropertyDescriptors")||Object.defineProperty(Object,"getOwnPropertyDescriptors",{configurable:!0,writable:!0,value:function(r){if(null==r)throw TypeError("Cannot convert undefined or null to object");var e=Object.getOwnPropertyDescriptor(r,"__proto__"),t=e?((a="__proto__")in(l={})?Object.defineProperty(l,a,{value:e,enumerable:!0,configurable:!0,writable:!0}):l[a]=e,l):{},o=!0,n=!1,i=void 0;try{for(var l,a,c,p=Object.getOwnPropertyNames(r)[Symbol.iterator]();!(o=(c=p.next()).done);o=!0){var b=c.value;t[b]=Object.getOwnPropertyDescriptor(r,b)}}catch(r){n=!0,i=r}finally{try{o||null==p.return||p.return()}finally{if(n)throw i}}return t}});'
       },
       minify,
-      write: outfile !== undefined,
-      outfile,
+      outfile: outfile || es5Outfile,
+      sourcemap: 'linked',
       plugins: [esbuildStepsPlugin],
       define: {
         "process.env.NODE_ENV": JSON.stringify(isDevMode ? "development" : "production"),
@@ -181,15 +184,18 @@ export default async function runBundler(inputFile, options) {
     });
     if (watch) {
       return context.watch();
-    } else if (es5Outfile !== undefined) {
-      await buildAndAnnounceEs5Bundle(context?.outputFiles?.[0]?.contents, es5Outfile);
+    } else if (outfile !== undefined && es5Outfile !== undefined) {
+      const contents = fs.readFileSync(outfile);
+      const inputSourceMap = new TextDecoder().decode(fs.readFileSync(outfile+'.map'));
+
+      await buildAndAnnounceEs5Bundle(contents, inputSourceMap, es5Outfile);
     }
   } catch (err) {
     logError(`Bundling failed for ${inputFile}:`, err);
     throw err;
   }
 
-  async function buildAndAnnounceEs5Bundle(inputData, output) {
+  async function buildAndAnnounceEs5Bundle(inputData, inputSourceMap, output) {
     let input;
     if (inputData !== undefined) {
       input = new TextDecoder().decode(inputData);
@@ -203,6 +209,7 @@ export default async function runBundler(inputFile, options) {
         input,
         outfile: output,
         minify,
+        inputSourceMap
       });
       if (!isSilent) {
         logSuccess(`ES5 file updated at ${output}!`);
@@ -271,6 +278,7 @@ async function transpileToEs5(options) {
   const input = options.input;
   const outfile = options.outfile;
   const minify = options.minify;
+  const inputSourceMap = options.inputSourceMap || true;
   const output = await swc.transform(input, {
     jsc: {
       parser: {
@@ -300,8 +308,11 @@ async function transpileToEs5(options) {
       keepClassNames: false,
     },
     minify,
+    inputSourceMap,
+    sourceMaps: true,
   });
   await writeFile(outfile, output.code);
+  await writeFile(outfile + '.map', output.map);
 }
 
 /**
