@@ -80,7 +80,6 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     }
   }
 
-  try {
     runBundler(normalizedPath, {
       watch: shouldWatch,
       minify: shouldMinify,
@@ -88,21 +87,12 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       globalScope,
       silent,
       outfile,
-<<<<<<< HEAD
-      globalScope,
       es5Outfile,
-=======
     }).catch((err) => {
       console.error(`ERROR: ${err}\n`);
       process.exit(1);
->>>>>>> dev
     });
-  } catch (err) {
-    console.error(`ERROR: ${err}\n`);
-    process.exit(1);
-  }
 }
-
 /**
  * Run bundler with the given options.
  * @param {string} inputFile
