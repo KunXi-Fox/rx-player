@@ -1,7 +1,7 @@
 {
   "name": "rx-player",
   "author": "Canal+",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Canal+ HTML5 Video Player",
   "main": "./dist/commonjs/index.js",
   "module": "./dist/es2017/index.js",
@@ -16,6 +16,11 @@
       "import": "./dist/es2017/experimental/index.js",
       "require": "./dist/commonjs/experimental/index.js",
       "default": "./dist/es2017/experimental/index.js"
+    },
+    "./experimental/config": {
+      "import": "./dist/es2017/config.js",
+      "require": "./dist/commonjs/config.js",
+      "default": "./dist/es2017/config.js"
     },
     "./experimental/features": {
       "import": "./dist/es2017/experimental/features/index.js",
@@ -141,8 +146,10 @@
   "sideEffects": false,
   "scripts": {
     "build": "./scripts/generate_build.mjs",
+    "build:noCheck": "./scripts/generate_build.mjs --no-check",
     "build:all": "npm run clean:build && npm run build:wasm:release && npm run bundle && npm run bundle:min && npm run build",
     "build:dev": "./scripts/generate_build.mjs --dev-mode",
+    "build:dev:noCheck": "./scripts/generate_build.mjs --dev-mode --no-check",
     "build:wasm:debug": "mkdir -p dist && cd ./src/parsers/manifest/dash/wasm-parser && cargo build --target wasm32-unknown-unknown && cp target/wasm32-unknown-unknown/debug/mpd_node_parser.wasm ../../../../../dist/mpd-parser.wasm",
     "build:wasm:release": "./scripts/build_wasm_release.sh",
     "bundle": "./scripts/run_bundler.mjs src/index.ts -g --production-mode -o dist/rx-player.js --es5 dist/rx-player.es5.js",
@@ -151,7 +158,7 @@
     "bundle:watch": "./scripts/run_bundler.mjs src/index.ts --production-mode --watch -o dist/rx-player.js --es5 dist/rx-player.es5.js",
     "certificate": "./scripts/generate_certificate",
     "check": "npm run check:types && npm run lint && npm run check:types:unit_tests",
-    "check:all": "npm run check:types && npm run lint && npm run lint:demo && npm run lint:tests && npm run test:unit && npm run test:integration && npm run test:memory && node -r esm ./scripts/check_nodejs_import_compatibility.js",
+    "check:all": "npm run check:types && npm run lint && npm run lint:demo && npm run lint:tests && npm run lint:scripts && npm run test:unit && npm run test:integration && npm run test:memory && node -r esm ./scripts/check_nodejs_import_compatibility.js",
     "check:demo": "npm run check:demo:types && npm run lint:demo",
     "check:demo:types": "tsc --noEmit --project demo/",
     "clean:build": "scripts/utils/remove_dir.mjs dist",
@@ -169,10 +176,15 @@
     "fmt:rust:check": "cd ./src/parsers/manifest/dash/wasm-parser && cargo fmt --check",
     "lint": "eslint src -c .eslintrc.js",
     "lint:demo": "eslint -c demo/.eslintrc.js demo/scripts",
+    "lint:scripts": "eslint -c scripts/.eslintrc.js --ext .js --ext .mjs --ext .cjs scripts",
     "lint:tests": "eslint tests/**/*.js --ignore-pattern '/tests/performance/bundle*'",
     "list": "node scripts/list-npm-scripts.mjs",
     "prepublishOnly": "npm run build:all",
+    "releases:changelog": "./scripts/update_changelog.mjs",
+    "releases:demo": "./scripts/update_gh-pages_demo",
     "releases:dev": "./scripts/make-dev-releases",
+    "releases:doc": "./scripts/update_gh-pages_doc",
+    "releases:official": "./scripts/make-official-release.sh",
     "start": "node ./scripts/start_demo_web_server.mjs",
     "start:wasm": "node ./scripts/start_demo_web_server.mjs --include-wasm",
     "test:integration": "npm run test:integration:chrome && npm run test:integration:firefox",
@@ -195,36 +207,36 @@
   "devDependencies": {
     "@canalplus/readme.doc": "0.5.0",
     "@swc/core": "^1.4.11",
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0",
-    "@types/sinon": "17.0.2",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "@vitest/browser": "^2.0.5",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "@typescript-eslint/eslint-plugin": "^8.18.1",
+    "@typescript-eslint/parser": "^8.18.1",
+    "@vitest/browser": "^2.1.8",
     "babel-loader": "9.1.3",
-    "core-js": "3.37.1",
+    "core-js": "3.39.0",
     "cross-env": "^7.0.3",
-    "esbuild": "0.23.0",
-    "eslint": "8.57.0",
+    "esbuild": "0.24.0",
+    "eslint": "8.57.1",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-ban": "1.6.0",
-    "eslint-plugin-import": "2.29.1",
-    "eslint-plugin-jsdoc": "48.10.2",
-    "eslint-plugin-react": "7.35.0",
+    "eslint-plugin-ban": "2.0.0",
+    "eslint-plugin-import": "2.31.0",
+    "eslint-plugin-jsdoc": "50.6.1",
+    "eslint-plugin-react": "7.37.2",
     "esm": "3.2.25",
-    "github-buttons": "2.28.1",
+    "github-buttons": "2.29.1",
     "html-entities": "2.5.2",
-    "jsdom": "^24.1.1",
-    "prettier": "^3.3.3",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "jsdom": "^25.0.1",
+    "prettier": "^3.4.2",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "regenerator-runtime": "0.14.1",
     "semver": "7.6.3",
-    "typescript": "5.5.4",
-    "vitest": "2.0.5",
-    "webdriverio": "9.0.1"
+    "typescript": "5.7.2",
+    "vitest": "2.1.8",
+    "webdriverio": "9.4.5"
   },
   "scripts-list": {
+    " INFO ": "---- This field is read by the `list` npm script and allows to guide you through the RxPlayer's npm scripts ----",
     "Build a demo page (e.g. to test a code change)": {
       "start": "Build the demo with the non-minified RxPlayer and serve it on a local server. Re-build on file updates.",
       "start:wasm": "Build the demo with the non-minified RxPlayer including the DASH WebAssembly MPD parser and serve it on a local server. Re-build on file updates.",
@@ -234,7 +246,8 @@
       "check:demo": "Check the validity of the demo directory by running the type checker and linter on it",
       "check:demo:types": "Check TypeScript types in demo files",
       "lint:demo": "Run linter on demo files",
-      "certificate": "Generate a certificate to be able to use HTTPS locally for the demo pages (`npm run start` will then listen to HTTPS requests through a communicated port)"
+      "certificate": "Generate a certificate to be able to use HTTPS locally for the demo pages (`npm run start` will then listen to HTTPS requests through a communicated port)",
+      "releases:demo": "Publish current demo as the GitHub's pages new demo page (\"stable\" branch only)"
     },
     "Type-check, format, or lint the current code": {
       "check": "Check the validity of the src directory by running the type checker and linter on it",
@@ -269,7 +282,9 @@
     "Build the player or one of its sub-parts": {
       "Regular builds (used by JS bundlers)": {
         "build": "Build the rx-player code in release mode",
-        "build:dev": "Build the rx-player code in development mode (more runtime checks, non-minified worker)"
+        "build:dev": "Build the rx-player code in development mode (more runtime checks, non-minified worker)",
+        "build:noCheck": "Build the rx-player code in release mode without performing compile-time type checks",
+        "build:dev:noCheck": "Build the rx-player code in development mode (more runtime checks, non-minified worker) without performing compile-time type checks"
       },
       "Legacy bundle builds (single-file bundles exporting to window.RxPlayer)": {
         "bundle": "Build the player in dist/rx-player.js",
@@ -286,11 +301,13 @@
       }
     },
     "Build the documentation pages": {
-      "doc": "Generate the HTML documentation in doc/generated/pages"
+      "doc": "Generate the HTML documentation in doc/generated/pages",
+      "releases:doc": "Publish current documentation as the GitHub's pages new documentation pages (\"stable\" branch only)"
     },
     "Make a release": {
-      "releases:dev": "Produce dev npm releases (which are tagged pre-releases on npm) with the code in the current branch",
-      "update-version": "Update the version to the string given in argument (example: `npm run update-version 3.8.0`). Will update the codebase and perform every builds."
+      "releases:dev": "Produce dev npm releases (which are tagged pre-releases on npm) from the current branch.",
+      "releases:official": "Produce a new official release of the RxPlayer from the current branch.",
+      "update-version": "Update the version of the RxPlayer. Will update the codebase and perform every builds."
     }
   }
 }

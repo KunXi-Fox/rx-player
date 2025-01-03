@@ -304,22 +304,10 @@ const PlayerModule = declareModule(
         player.play().catch(() => {
           // ignored
         });
-
-        const isStopped = state.get("isStopped");
-        const hasEnded = state.get("hasEnded");
-        if (!isStopped && !hasEnded) {
-          state.update("isPaused", false);
-        }
       },
 
       pause() {
         player.pause();
-
-        const isStopped = state.get("isStopped");
-        const hasEnded = state.get("hasEnded");
-        if (!isStopped && !hasEnded) {
-          state.update("isPaused", true);
-        }
       },
 
       stop() {
@@ -455,7 +443,7 @@ const PlayerModule = declareModule(
       player
         .attachWorker({
           workerUrl: "./worker.js",
-          dashWasmUrl: "./mpd-parser.wasm",
+          dashWasmUrl: __INCLUDE_WASM_PARSER__ ? "./mpd-parser.wasm" : undefined,
         })
         .catch((err) => {
           // eslint-disable-next-line no-console

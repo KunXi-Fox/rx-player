@@ -16,7 +16,6 @@
 
 import type { IListener } from "../utils/event_emitter";
 import globalScope from "../utils/global_scope";
-import isNullOrUndefined from "../utils/is_null_or_undefined";
 
 /** Regular MediaKeys type + optional functions present in IE11. */
 interface ICompatMediaKeysConstructor {
@@ -116,6 +115,8 @@ export interface IMediaSourceEventMap {
   sourceopen: Event;
   sourceended: Event;
   sourceclose: Event;
+  startstreaming: Event;
+  endstreaming: Event;
 }
 
 /**
@@ -136,6 +137,7 @@ export interface IMediaSource extends IEventTarget<IMediaSourceEventMap> {
   handle?: MediaProvider | IMediaSource | undefined;
   readyState: "closed" | "open" | "ended";
   sourceBuffers: ISourceBufferList;
+  streaming?: boolean | undefined;
 
   addSourceBuffer(type: string): ISourceBuffer;
   clearLiveSeekableRange(): void;
@@ -252,6 +254,7 @@ export interface IMediaElement extends IEventTarget<IMediaElementEventMap> {
   srcObject?: undefined | null | MediaProvider;
   textTracks: TextTrackList | never[];
   volume: number;
+  disableRemotePlayback?: boolean;
 
   addTextTrack: (kind: TextTrackKind) => TextTrack;
   appendChild<T extends Node>(x: T): void;
@@ -267,8 +270,20 @@ export interface IMediaElement extends IEventTarget<IMediaElementEventMap> {
   oncanplay: ((evt: Event) => void) | null;
   oncanplaythrough: ((evt: Event) => void) | null;
   onended: ((evt: Event) => void) | null;
-  onenterpictureinpicture?: ((evt: Event) => void) | null;
-  onleavepictureinpicture?: ((evt: Event) => void) | null;
+  onenterpictureinpicture?:
+    | ((
+        evt: Event & {
+          pictureInPictureWindow: ICompatPictureInPictureWindow;
+        },
+      ) => void)
+    | null;
+  onleavepictureinpicture?:
+    | ((
+        evt: Event & {
+          pictureInPictureWindow: ICompatPictureInPictureWindow;
+        },
+      ) => void)
+    | null;
   onerror: ((evt: Event) => void) | null;
   onloadeddata: ((evt: Event) => void) | null;
   onloadedmetadata: ((evt: Event) => void) | null;
@@ -399,23 +414,29 @@ interface ICompatVideoTrack {
 export interface ICompatPictureInPictureWindow extends EventTarget {
   width: number;
   height: number;
+  onresize: ((evt: Event) => void) | null;
 }
 
-/* eslint-disable */
 /** MediaSource implementation, including vendored implementations. */
-const gs = globalScope as any;
+const gs = globalScope as typeof window & {
+  MozMediaSource?: typeof MediaSource | undefined | null;
+  WebKitMediaSource?: typeof MediaSource | undefined | null;
+  MSMediaSource?: typeof MediaSource | undefined | null;
+  ManagedMediaSource?: typeof MediaSource | undefined | null;
+};
+
 const MediaSource_:
   | { new (): IMediaSource; isTypeSupported(type: string): boolean }
   | undefined =
-  gs === undefined
-    ? undefined
-    : !isNullOrUndefined(gs.MediaSource)
-      ? gs.MediaSource
-      : !isNullOrUndefined(gs.MozMediaSource)
-        ? gs.MozMediaSource
-        : !isNullOrUndefined(gs.WebKitMediaSource)
-          ? gs.WebKitMediaSource
-          : gs.MSMediaSource;
+  gs?.MediaSource ??
+  gs?.MozMediaSource ??
+  gs?.WebKitMediaSource ??
+  gs?.MSMediaSource ??
+  gs?.ManagedMediaSource ??
+  undefined;
+
+const isManagedMediaSource =
+  MediaSource_ !== undefined && MediaSource_ === gs?.ManagedMediaSource;
 /* eslint-enable */
 
 /** List an HTMLMediaElement's possible values for its readyState property. */
@@ -448,4 +469,4 @@ export type {
   ICompatVTTCue,
   ICompatVTTCueConstructor,
 };
-export { MediaSource_, READY_STATES };
+export { MediaSource_, isManagedMediaSource, READY_STATES };

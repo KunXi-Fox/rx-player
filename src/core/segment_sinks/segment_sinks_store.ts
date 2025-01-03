@@ -55,8 +55,9 @@ export interface ISegmentSinkMetrics {
 
 interface ISegmentSinkMetricForType {
   bufferType: IBufferType;
-  codec: string | undefined;
-  segmentInventory: IBufferedChunkSnapshot[] | undefined;
+  codec?: string | undefined;
+  sizeEstimate?: number | undefined;
+  segmentInventory?: IBufferedChunkSnapshot[] | undefined;
 }
 
 /**
@@ -103,7 +104,11 @@ export default class SegmentSinksStore {
    * disabled. This means that the corresponding type (e.g. audio, video etc.)
    * won't be needed when playing the current content.
    */
-  private _initializedSegmentSinks: Partial<Record<IBufferType, SegmentSink | null>>;
+  private _initializedSegmentSinks: {
+    audio?: AudioVideoSegmentSink | undefined | null;
+    video?: AudioVideoSegmentSink | undefined | null;
+    text?: TextSegmentSink | null;
+  };
 
   /**
    * Callbacks called after a SourceBuffer is either created or disabled.
@@ -213,7 +218,6 @@ export default class SegmentSinksStore {
       return Promise.resolve();
     }
     return createCancellablePromise(cancelWaitSignal, (res) => {
-      // eslint-disable-next-line prefer-const
       let onAddedOrDisabled: () => void = noop;
 
       const removeCallback = () => {
@@ -308,7 +312,7 @@ export default class SegmentSinksStore {
       return memorizedSegmentSink;
     }
 
-    let segmentSink: SegmentSink;
+    let segmentSink: TextSegmentSink;
     if (bufferType === "text") {
       log.info("SB: Creating a new text SegmentSink");
       if (this._textInterface === null) {
@@ -381,15 +385,26 @@ export default class SegmentSinksStore {
   private createSegmentSinkMetricsForType(
     bufferType: IBufferType,
   ): ISegmentSinkMetricForType {
+    const inventory = this._initializedSegmentSinks[bufferType]?.getLastKnownInventory();
+    let sizeEstimate: number | undefined;
+    if (inventory !== undefined) {
+      sizeEstimate = 0;
+      for (const item of inventory) {
+        if (item.chunkSize === undefined || sizeEstimate === undefined) {
+          sizeEstimate = undefined;
+          break;
+        }
+        sizeEstimate += item.chunkSize;
+      }
+    }
     return {
       bufferType,
+      sizeEstimate,
       codec: this._initializedSegmentSinks[bufferType]?.codec,
-      segmentInventory: this._initializedSegmentSinks[bufferType]
-        ?.getLastKnownInventory()
-        .map((chunk) => ({
-          ...chunk,
-          infos: getChunkContextSnapshot(chunk.infos),
-        })),
+      segmentInventory: inventory?.map((chunk) => ({
+        ...chunk,
+        infos: getChunkContextSnapshot(chunk.infos),
+      })),
     };
   }
 

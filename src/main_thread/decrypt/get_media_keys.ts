@@ -26,7 +26,7 @@ import getMediaKeySystemAccess from "./find_key_system";
 import type { ICodecSupportList } from "./find_key_system";
 import type { IMediaKeySessionStores } from "./types";
 import LoadedSessionsStore from "./utils/loaded_sessions_store";
-import MediaKeysInfosStore from "./utils/media_keys_infos_store";
+import MediaKeysAttacher from "./utils/media_keys_attacher";
 import PersistentSessionsStore from "./utils/persistent_sessions_store";
 import ServerCertificateStore from "./utils/server_certificate_store";
 
@@ -94,14 +94,16 @@ export default async function getMediaKeysInfos(
   }
 
   const { options, mediaKeySystemAccess, askedConfiguration, codecSupport } = evt.value;
-  const currentState = MediaKeysInfosStore.getState(mediaElement);
+  const currentState = await MediaKeysAttacher.getAttachedMediaKeysState(mediaElement);
   const persistentSessionsStore = createPersistentSessionsStorage(options);
 
   if (
+    evt.value.options.reuseMediaKeys !== false &&
     canReuseMediaKeys() &&
     currentState !== null &&
     evt.type === "reuse-media-key-system-access"
   ) {
+    log.debug("DRM: Reusing already created MediaKeys");
     const { mediaKeys, loadedSessionsStore } = currentState;
 
     // We might just rely on the currently attached MediaKeys instance.

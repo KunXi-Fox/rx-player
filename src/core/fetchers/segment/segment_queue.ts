@@ -57,15 +57,35 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
   private _currentContentInfo: ISegmentQueueContentInfo | null;
 
   /**
+   * Indicates whether the segment queue is inturrupted or if
+   * it is authorized to download segment data.
+   * Updating this value to `true` should stop the
+   * loading of new media data. Updating this value to `false` should
+   * restart the downloading queue.
+   * Note: this does not affect the downloading of init segment as
+   * they are always downloaded, regardless of this property value.
+   *
+   * This option can be used to temporarly reduce the usage of the
+   * network.
+   */
+  private isMediaSegmentQueueInterrupted: SharedReference<boolean>;
+
+  /**
    * Create a new `SegmentQueue`.
    *
    * @param {Object} segmentFetcher - Interface to facilitate the download of
    * segments.
+   * @param {Object} isMediaSegmentQueueInterrupted - Reference to a boolean indicating
+   * if the media segment queue is interrupted.
    */
-  constructor(segmentFetcher: IPrioritizedSegmentFetcher<T>) {
+  constructor(
+    segmentFetcher: IPrioritizedSegmentFetcher<T>,
+    isMediaSegmentQueueInterrupted: SharedReference<boolean>,
+  ) {
     super();
     this._segmentFetcher = segmentFetcher;
     this._currentContentInfo = null;
+    this.isMediaSegmentQueueInterrupted = isMediaSegmentQueueInterrupted;
   }
 
   /**
@@ -138,6 +158,19 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
       mediaSegmentAwaitingInitMetadata: null,
     };
     this._currentContentInfo = currentContentInfo;
+
+    this.isMediaSegmentQueueInterrupted.onUpdate(
+      (val) => {
+        if (!val) {
+          log.debug(
+            "SQ: Media segment can be loaded again, restarting queue.",
+            content.adaptation.type,
+          );
+          this._restartMediaSegmentDownloadingQueue(currentContentInfo);
+        }
+      },
+      { clearSignal: currentCanceller.signal },
+    );
 
     // Listen for asked media segments
     downloadQueue.onUpdate(
@@ -255,11 +288,14 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
     }
 
     const { downloadQueue, content, initSegmentInfoRef, currentCanceller } = contentInfo;
-    const { segmentQueue } = downloadQueue.getValue();
-    const currentNeededSegment = segmentQueue[0];
-    const recursivelyRequestSegments = (
-      startingSegment: IQueuedSegment | undefined,
-    ): void => {
+
+    const recursivelyRequestSegments = (): void => {
+      if (this.isMediaSegmentQueueInterrupted.getValue()) {
+        log.debug("SQ: Segment fetching postponed because it cannot stream now.");
+        return;
+      }
+      const { segmentQueue } = downloadQueue.getValue();
+      const startingSegment = segmentQueue[0];
       if (currentCanceller !== null && currentCanceller.isUsed()) {
         contentInfo.mediaSegmentRequest = null;
         return;
@@ -276,7 +312,10 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
           : canceller.linkToSignal(currentCanceller.signal);
 
       const { segment, priority } = startingSegment;
-      const context = objectAssign({ segment }, content);
+      const context = objectAssign(
+        { segment, nextSegment: segmentQueue[1]?.segment },
+        content,
+      );
 
       /**
        * If `true` , the current task has either errored, finished, or was
@@ -318,7 +357,7 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
           lastQueue.shift();
         }
         isComplete = true;
-        recursivelyRequestSegments(lastQueue[0]);
+        recursivelyRequestSegments();
       };
 
       /** Scheduled actual segment request. */
@@ -422,7 +461,7 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
 
       contentInfo.mediaSegmentRequest = { segment, priority, request, canceller };
     };
-    recursivelyRequestSegments(currentNeededSegment);
+    recursivelyRequestSegments();
   }
 
   /**
@@ -449,7 +488,7 @@ export default class SegmentQueue<T> extends EventEmitter<ISegmentQueueEvent<T>>
         ? noop
         : canceller.linkToSignal(contentInfo.currentCanceller.signal);
     const { segment, priority } = queuedInitSegment;
-    const context = objectAssign({ segment }, content);
+    const context = objectAssign({ segment, nextSegment: undefined }, content);
 
     /**
      * If `true` , the current task has either errored, finished, or was

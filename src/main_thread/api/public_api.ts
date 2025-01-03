@@ -32,13 +32,15 @@ import getStartDate from "../../compat/get_start_date";
 import hasMseInWorker from "../../compat/has_mse_in_worker";
 import hasWorkerApi from "../../compat/has_worker_api";
 import isDebugModeEnabled from "../../compat/is_debug_mode_enabled";
-import type { ISegmentSinkMetrics } from "../../core/segment_sinks/segment_buffers_store";
+import config from "../../config";
+import type { ISegmentSinkMetrics } from "../../core/segment_sinks/segment_sinks_store";
 import type {
   IAdaptationChoice,
   IInbandEvent,
   IABRThrottlers,
   IBufferType,
 } from "../../core/types";
+import type { IDefaultConfig } from "../../default_config";
 import type { IErrorCode, IErrorType } from "../../errors";
 import { ErrorCodes, ErrorTypes, formatError, MediaError } from "../../errors";
 import WorkerInitializationError from "../../errors/worker_initialization_error";
@@ -411,7 +413,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1194624
     videoElement.preload = "auto";
 
-    this.version = /* PLAYER_VERSION */ "4.1.0";
+    this.version = /* PLAYER_VERSION */ "4.2.0";
     this.log = log;
     this.state = "STOPPED";
     this.videoElement = videoElement;
@@ -575,6 +577,21 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         },
         this._destroyCanceller.signal,
       );
+
+      const sendConfigUpdates = (updates: Partial<IDefaultConfig>) => {
+        if (this._priv_worker === null) {
+          return;
+        }
+        log.debug("---> Sending To Worker:", MainThreadMessageType.ConfigUpdate);
+        this._priv_worker.postMessage({
+          type: MainThreadMessageType.ConfigUpdate,
+          value: updates,
+        });
+      };
+      if (config.updated) {
+        sendConfigUpdates(config.getCurrent());
+      }
+      config.addEventListener("update", sendConfigUpdates, this._destroyCanceller.signal);
     });
   }
 
@@ -1912,7 +1929,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
 
     let periodId: string | undefined;
-    let filterPlayableRepresentations: boolean;
+    let filterPlayableRepresentations = true;
     if (typeof arg === "string") {
       periodId = arg;
     } else {
@@ -1971,7 +1988,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
 
     let periodId: string | undefined;
-    let filterPlayableRepresentations: boolean;
+    let filterPlayableRepresentations = true;
     if (typeof arg === "string") {
       periodId = arg;
     } else {
@@ -2012,7 +2029,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
 
     let periodId: string | undefined;
-    let filterPlayableRepresentations: boolean;
+    let filterPlayableRepresentations = true;
     if (typeof arg === "string") {
       periodId = arg;
     } else {
@@ -2071,7 +2088,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
 
     let periodId: string | undefined;
-    let filterPlayableRepresentations: boolean;
+    let filterPlayableRepresentations = true;
     if (typeof arg === "string") {
       periodId = arg;
     } else {
@@ -3315,7 +3332,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     }
   }
 }
-Player.version = /* PLAYER_VERSION */ "4.1.0";
+Player.version = /* PLAYER_VERSION */ "4.2.0";
 
 /** Every events sent by the RxPlayer's public API. */
 interface IPublicAPIEvent {

@@ -30,7 +30,6 @@ import isNullOrUndefined from "../../utils/is_null_or_undefined";
 import { objectValues } from "../../utils/object_values";
 import { bytesToHex } from "../../utils/string_parsing";
 import TaskCanceller from "../../utils/task_canceller";
-import attachMediaKeys from "./attach_media_keys";
 import createOrLoadSession from "./create_or_load_session";
 import type { ICodecSupportList } from "./find_key_system";
 import type { IMediaKeysInfos } from "./get_media_keys";
@@ -57,6 +56,7 @@ import {
   areSomeKeyIdsContainedIn,
 } from "./utils/key_id_comparison";
 import type KeySessionRecord from "./utils/key_session_record";
+import MediaKeysAttacher from "./utils/media_keys_attacher";
 
 /**
  * Module communicating with the Content Decryption Module (or CDM) to be able
@@ -208,6 +208,7 @@ export default class ContentDecryptor extends EventEmitter<IContentDecryptorEven
 
         this.systemId = systemId;
         if (this._stateData.state === ContentDecryptorState.Initializing) {
+          log.debug("DRM: Waiting for attachment.");
           this._stateData = {
             state: ContentDecryptorState.WaitingForAttachment,
             isInitDataQueueLocked: true,
@@ -260,6 +261,7 @@ export default class ContentDecryptor extends EventEmitter<IContentDecryptorEven
     const shouldDisableLock = options.disableMediaKeysAttachmentLock === true;
 
     if (shouldDisableLock) {
+      log.debug("DRM: disabling MediaKeys attachment lock. Ready for content");
       this._stateData = {
         state: ContentDecryptorState.ReadyForContent,
         isInitDataQueueLocked: true,
@@ -285,8 +287,12 @@ export default class ContentDecryptor extends EventEmitter<IContentDecryptorEven
     };
 
     log.debug("DRM: Attaching current MediaKeys");
-    attachMediaKeys(mediaElement, stateToAttach, this._canceller.signal)
+    MediaKeysAttacher.attach(mediaElement, stateToAttach)
       .then(async () => {
+        if (this._isStopped()) {
+          // We might be stopped since then
+          return;
+        }
         this._stateData.isMediaKeysAttached = MediaKeyAttachmentStatus.Attached;
 
         const { serverCertificate } = options;

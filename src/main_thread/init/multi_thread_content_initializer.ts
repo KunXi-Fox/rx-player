@@ -1,7 +1,7 @@
 import type { IMediaElement } from "../../compat/browser_compatibility_types";
 import mayMediaElementFailOnUndecipherableData from "../../compat/may_media_element_fail_on_undecipherable_data";
 import shouldReloadMediaSourceOnDecipherabilityUpdate from "../../compat/should_reload_media_source_on_decipherability_update";
-import type { ISegmentSinkMetrics } from "../../core/segment_sinks/segment_buffers_store";
+import type { ISegmentSinkMetrics } from "../../core/segment_sinks/segment_sinks_store";
 import type {
   IAdaptiveRepresentationSelectorArguments,
   IAdaptationChoice,
@@ -59,7 +59,10 @@ import sendMessage from "./send_message";
 import type { ITextDisplayerOptions } from "./types";
 import { ContentInitializer } from "./types";
 import createCorePlaybackObserver from "./utils/create_core_playback_observer";
-import { resetMediaElement } from "./utils/create_media_source";
+import {
+  resetMediaElement,
+  disableRemotePlaybackOnManagedMediaSource,
+} from "./utils/create_media_source";
 import type { IInitialTimeOptions } from "./utils/get_initial_time";
 import getInitialTime from "./utils/get_initial_time";
 import getLoadedReference from "./utils/get_loaded_reference";
@@ -77,6 +80,20 @@ const generateContentId = idGenerator();
 export default class MultiThreadContentInitializer extends ContentInitializer {
   /** Constructor settings associated to this `MultiThreadContentInitializer`. */
   private _settings: IInitializeArguments;
+
+  /**
+   * The WebWorker may be sending messages as soon as we're preparing the
+   * content but the `MultiThreadContentInitializer` is only able to handle all of
+   * them only once `start`ed.
+   *
+   * As such `_queuedWorkerMessages` is set to an Array  when `prepare` has been
+   * called but not `start` yet, and contains all worker messages that have to
+   * be processed when `start` is called.
+   *
+   * It is set to `null` when there's no need to rely on that queue (either not
+   * yet `prepare`d or already `start`ed).
+   */
+  private _queuedWorkerMessages: MessageEvent[] | null;
 
   /**
    * Information relative to the current loaded content.
@@ -99,12 +116,13 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
   private _currentMediaSourceCanceller: TaskCanceller;
 
   /**
-   * Stores the resolvers and the current messageId that is sent to the web worker to receive segment sink metrics.
+   * Stores the resolvers and the current messageId that is sent to the web worker to
+   * receive segment sink metrics.
    * The purpose of collecting metrics is for monitoring and debugging.
    */
   private _segmentMetrics: {
     lastMessageId: number;
-    resolvers: Record<number, (value: ISegmentSinkMetrics | undefined) => void>;
+    resolvers: Map<number, (value: ISegmentSinkMetrics | undefined) => void>;
   };
 
   /**
@@ -121,8 +139,9 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
     this._currentContentInfo = null;
     this._segmentMetrics = {
       lastMessageId: 0,
-      resolvers: {},
+      resolvers: new Map(),
     };
+    this._queuedWorkerMessages = null;
   }
 
   /**
@@ -176,6 +195,66 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
     if (this._initCanceller.isUsed()) {
       return;
     }
+    this._queuedWorkerMessages = [];
+    log.debug("MTCI: addEventListener prepare buffering worker messages");
+    const onmessage = (evt: MessageEvent): void => {
+      const msgData = evt.data as unknown as IWorkerMessage;
+      const type = msgData.type;
+      switch (type) {
+        case WorkerMessageType.LogMessage: {
+          const formatted = msgData.value.logs.map((l) => {
+            switch (typeof l) {
+              case "string":
+              case "number":
+              case "boolean":
+              case "undefined":
+                return l;
+              case "object":
+                if (l === null) {
+                  return null;
+                }
+                return formatWorkerError(l);
+              default:
+                assertUnreachable(l);
+            }
+          });
+          switch (msgData.value.logLevel) {
+            case "NONE":
+              break;
+            case "ERROR":
+              log.error(...formatted);
+              break;
+            case "WARNING":
+              log.warn(...formatted);
+              break;
+            case "INFO":
+              log.info(...formatted);
+              break;
+            case "DEBUG":
+              log.debug(...formatted);
+              break;
+            default:
+              assertUnreachable(msgData.value.logLevel);
+          }
+          break;
+        }
+        default:
+          if (this._queuedWorkerMessages !== null) {
+            this._queuedWorkerMessages.push(evt);
+          }
+          break;
+      }
+    };
+    this._settings.worker.addEventListener("message", onmessage);
+    const onmessageerror = (_msg: MessageEvent) => {
+      log.error("MTCI: Error when receiving message from worker.");
+    };
+    this._settings.worker.addEventListener("messageerror", onmessageerror);
+    this._initCanceller.signal.register(() => {
+      log.debug("MTCI: removeEventListener prepare for worker message");
+      this._settings.worker.removeEventListener("message", onmessage);
+      this._settings.worker.removeEventListener("messageerror", onmessageerror);
+    });
 
     // Also bind all `SharedReference` objects:
 
@@ -384,6 +463,10 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
                     resetMediaElement(mediaElement, mediaSourceLink.value);
                   });
                 }
+                disableRemotePlaybackOnManagedMediaSource(
+                  mediaElement,
+                  this._currentMediaSourceCanceller.signal,
+                );
                 mediaSourceStatus.setValue(MediaSourceInitializationStatus.Attached);
               }
             },
@@ -825,46 +908,52 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
           const ref = new SharedReference<IAdaptationChoice | null | undefined>(
             undefined,
           );
-          ref.onUpdate((adapChoice) => {
-            if (this._currentContentInfo === null) {
-              ref.finish();
-              return;
-            }
-            if (!isNullOrUndefined(adapChoice)) {
-              adapChoice.representations.onUpdate((repChoice, stopListening) => {
-                if (this._currentContentInfo === null) {
-                  stopListening();
-                  return;
-                }
-                sendMessage(this._settings.worker, {
-                  type: MainThreadMessageType.RepresentationUpdate,
-                  contentId: this._currentContentInfo.contentId,
-                  value: {
-                    periodId: msgData.value.periodId,
-                    adaptationId: adapChoice.adaptationId,
-                    bufferType: msgData.value.bufferType,
-                    choice: repChoice,
+          ref.onUpdate(
+            (adapChoice) => {
+              if (this._currentContentInfo === null) {
+                ref.finish();
+                return;
+              }
+              if (!isNullOrUndefined(adapChoice)) {
+                adapChoice.representations.onUpdate(
+                  (repChoice, stopListening) => {
+                    if (this._currentContentInfo === null) {
+                      stopListening();
+                      return;
+                    }
+                    sendMessage(this._settings.worker, {
+                      type: MainThreadMessageType.RepresentationUpdate,
+                      contentId: this._currentContentInfo.contentId,
+                      value: {
+                        periodId: msgData.value.periodId,
+                        adaptationId: adapChoice.adaptationId,
+                        bufferType: msgData.value.bufferType,
+                        choice: repChoice,
+                      },
+                    });
                   },
-                });
+                  { clearSignal: this._initCanceller.signal },
+                );
+              }
+              sendMessage(this._settings.worker, {
+                type: MainThreadMessageType.TrackUpdate,
+                contentId: this._currentContentInfo.contentId,
+                value: {
+                  periodId: msgData.value.periodId,
+                  bufferType: msgData.value.bufferType,
+                  choice: isNullOrUndefined(adapChoice)
+                    ? adapChoice
+                    : {
+                        adaptationId: adapChoice.adaptationId,
+                        switchingMode: adapChoice.switchingMode,
+                        initialRepresentations: adapChoice.representations.getValue(),
+                        relativeResumingPosition: adapChoice.relativeResumingPosition,
+                      },
+                },
               });
-            }
-            sendMessage(this._settings.worker, {
-              type: MainThreadMessageType.TrackUpdate,
-              contentId: this._currentContentInfo.contentId,
-              value: {
-                periodId: msgData.value.periodId,
-                bufferType: msgData.value.bufferType,
-                choice: isNullOrUndefined(adapChoice)
-                  ? adapChoice
-                  : {
-                      adaptationId: adapChoice.adaptationId,
-                      switchingMode: adapChoice.switchingMode,
-                      initialRepresentations: adapChoice.representations.getValue(),
-                      relativeResumingPosition: adapChoice.relativeResumingPosition,
-                    },
-              },
-            });
-          });
+            },
+            { clearSignal: this._initCanceller.signal },
+          );
           this.trigger("periodStreamReady", {
             period,
             type: msgData.value.bufferType,
@@ -1042,40 +1131,15 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
           }
           break;
 
-        case WorkerMessageType.LogMessage: {
-          const formatted = msgData.value.logs.map((l) => {
-            switch (typeof l) {
-              case "string":
-              case "number":
-              case "boolean":
-              case "undefined":
-                return l;
-              case "object":
-                if (l === null) {
-                  return null;
-                }
-                return formatWorkerError(l);
-              default:
-                assertUnreachable(l);
-            }
-          });
-          switch (msgData.value.logLevel) {
-            case "NONE":
-              break;
-            case "ERROR":
-              log.error(...formatted);
-              break;
-            case "WARNING":
-              log.warn(...formatted);
-              break;
-            case "INFO":
-              log.info(...formatted);
-              break;
-            case "DEBUG":
-              log.debug(...formatted);
-              break;
-            default:
-              assertUnreachable(msgData.value.logLevel);
+        case WorkerMessageType.SegmentSinkStoreUpdate: {
+          if (this._currentContentInfo?.contentId !== msgData.contentId) {
+            return;
+          }
+          const resolveFn = this._segmentMetrics.resolvers.get(msgData.value.messageId);
+          if (resolveFn !== undefined) {
+            resolveFn(msgData.value.segmentSinkMetrics);
+          } else {
+            log.error("MTCI: Failed to send segment sink store update");
           }
           break;
         }
@@ -1085,26 +1149,26 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
           // Should already be handled by the API
           break;
 
-        case WorkerMessageType.SegmentSinkStoreUpdate: {
-          if (this._currentContentInfo?.contentId !== msgData.contentId) {
-            return;
-          }
-          const resolveFn = this._segmentMetrics.resolvers[msgData.value.messageId];
-          if (resolveFn !== undefined) {
-            resolveFn(msgData.value.segmentSinkMetrics);
-            delete this._segmentMetrics.resolvers[msgData.value.messageId];
-          } else {
-            log.error("MTCI: Failed to send segment sink store update");
-          }
+        case WorkerMessageType.LogMessage:
+          // Already handled by prepare's handler
           break;
-        }
         default:
           assertUnreachable(msgData);
       }
     };
 
+    log.debug("MTCI: addEventListener for worker message");
+    if (this._queuedWorkerMessages !== null) {
+      const bufferedMessages = this._queuedWorkerMessages.slice();
+      log.debug("MTCI: Processing buffered messages", bufferedMessages.length);
+      for (const message of bufferedMessages) {
+        onmessage(message);
+      }
+      this._queuedWorkerMessages = null;
+    }
     this._settings.worker.addEventListener("message", onmessage);
     this._initCanceller.signal.register(() => {
+      log.debug("MTCI: removeEventListener for worker message");
       this._settings.worker.removeEventListener("message", onmessage);
     });
   }
@@ -1538,11 +1602,19 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
         value: { messageId },
       });
       return new Promise((resolve, reject) => {
-        this._segmentMetrics.resolvers[messageId] = resolve;
         const rejectFn = (err: CancellationError) => {
-          delete this._segmentMetrics.resolvers[messageId];
+          cancelSignal.deregister(rejectFn);
+          this._segmentMetrics.resolvers.delete(messageId);
           return reject(err);
         };
+        this._segmentMetrics.resolvers.set(
+          messageId,
+          (value: ISegmentSinkMetrics | undefined) => {
+            cancelSignal.deregister(rejectFn);
+            this._segmentMetrics.resolvers.delete(messageId);
+            resolve(value);
+          },
+        );
         cancelSignal.register(rejectFn);
       });
     };
@@ -1728,6 +1800,10 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
                 resetMediaElement(mediaElement, url);
               });
               mediaSourceStatus.setValue(MediaSourceInitializationStatus.Attached);
+              disableRemotePlaybackOnManagedMediaSource(
+                mediaElement,
+                this._currentMediaSourceCanceller.signal,
+              );
             }
           },
           {
@@ -2006,24 +2082,6 @@ type IDecryptionInitializationState =
    * `HTMLMediaElement` (such as linking a content / `MediaSource` to it).
    */
   | { type: "uninitialized"; value: null }
-  /**
-   * The `MediaSource` or media url has to be linked to the `HTMLMediaElement`
-   * before continuing.
-   * Once it has been linked with success (e.g. the `MediaSource` has "opened"),
-   * the `isMediaLinked` `SharedReference` should be set to `true`.
-   *
-   * In the `MediaSource` case, you should wait until the `"initialized"`
-   * state before pushing segment.
-   *
-   * Note that the `"awaiting-media-link"` is an optional state. It can be
-   * skipped to directly `"initialized"` instead.
-   */
-  | {
-      type: "awaiting-media-link";
-      value: {
-        isMediaLinked: SharedReference<boolean>;
-      };
-    }
   /**
    * The `MediaSource` or media url can be linked AND segments can be pushed to
    * the `HTMLMediaElement` on which decryption capabilities were wanted.

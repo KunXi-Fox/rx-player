@@ -43,7 +43,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const shouldWatch = args.includes("-w") || args.includes("--watch");
   const shouldMinify = args.includes("-m") || args.includes("--minify");
   const production = args.includes("-p") || args.includes("--production-mode");
-  const globalScope = args.includes("-g") || args.includes("--global");
+  const globalScope = args.includes("-g") || args.includes("--globals");
   const silent = args.includes("-s") || args.includes("--silent");
 
   let outfile;
@@ -81,18 +81,24 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   }
 
   try {
-    await runBundler(normalizedPath, {
+    runBundler(normalizedPath, {
       watch: shouldWatch,
       minify: shouldMinify,
       production,
+      globalScope,
       silent,
       outfile,
+<<<<<<< HEAD
       globalScope,
       es5Outfile,
+=======
+    }).catch((err) => {
+      console.error(`ERROR: ${err}\n`);
+      process.exit(1);
+>>>>>>> dev
     });
   } catch (err) {
     console.error(`ERROR: ${err}\n`);
-    displayHelp();
     process.exit(1);
   }
 }
@@ -330,6 +336,7 @@ Available options:
   -5 <path>, --es5 <path>     Perform an ES5-compatible build, should be followed by the corresponding
                               output filename (e.g. '-5 "dist/rx-player.es5.js"')
   -p, --production-mode       Build all files in production mode (less runtime checks, mostly).
+  -g, --globals               Add the RxPlayer to the global scope.
   -g, --global-scope          If set, enable "global scope mode" (the \`__GLOBAL_SCOPE__\` global
                               symbol) on the bundle.
   -s, --silent                Don't log to stdout/stderr when bundling

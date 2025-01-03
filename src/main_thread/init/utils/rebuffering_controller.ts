@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import isSeekingApproximate from "../../../compat/is_seeking_approximate";
 import config from "../../../config";
 import type { IBufferType } from "../../../core/types";
 import { MediaError } from "../../../errors";
@@ -117,13 +118,10 @@ export default class RebufferingController extends EventEmitter<IRebufferingCont
               ? freezing.timestamp
               : prevFreezingState.attemptTimestamp;
 
-          if (
-            !position.isAwaitingFuturePosition() &&
-            now - referenceTimestamp > UNFREEZING_SEEK_DELAY
-          ) {
+          if (now - referenceTimestamp > UNFREEZING_SEEK_DELAY) {
             log.warn("Init: trying to seek to un-freeze player");
             this._playbackObserver.setCurrentTime(
-              this._playbackObserver.getCurrentTime() + UNFREEZING_DELTA_POSITION,
+              observation.position.getWanted() + UNFREEZING_DELTA_POSITION,
             );
             prevFreezingState = { attemptTimestamp: now };
           }
@@ -179,7 +177,11 @@ export default class RebufferingController extends EventEmitter<IRebufferingCont
 
         playbackRateUpdater.startRebuffering();
 
-        if (this._manifest === null) {
+        if (
+          this._manifest === null ||
+          (isSeekingApproximate &&
+            getMonotonicTimeStamp() - rebuffering.timestamp <= 1000)
+        ) {
           this.trigger("stalled", stalledReason);
           return;
         }
@@ -235,6 +237,8 @@ export default class RebufferingController extends EventEmitter<IRebufferingCont
           positionBlockedAt,
         );
         if (
+          (!isSeekingApproximate ||
+            getMonotonicTimeStamp() - rebuffering.timestamp > 1000) &&
           this._speed.getValue() > 0 &&
           nextBufferRangeGap < BUFFER_DISCONTINUITY_THRESHOLD
         ) {
@@ -477,7 +481,7 @@ function generateDiscontinuityError(stalledPosition: number, seekTo: number): Me
     "DISCONTINUITY_ENCOUNTERED",
     "A discontinuity has been encountered at position " +
       String(stalledPosition) +
-      ", seeked at position " +
+      ", seeking at position " +
       String(seekTo),
   );
 }

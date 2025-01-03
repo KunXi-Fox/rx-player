@@ -19,6 +19,7 @@ import type { IPlayerError, ITrackType } from "../../../public_types";
 import createDashPipelines from "../../../transports/dash";
 import arrayFind from "../../../utils/array_find";
 import assert, { assertUnreachable } from "../../../utils/assert";
+import globalScope from "../../../utils/global_scope";
 import type { ILogFormat, ILoggerLevel } from "../../../utils/logger";
 import { scaleTimestamp } from "../../../utils/monotonic_timestamp";
 import objectAssign from "../../../utils/object_assign";
@@ -80,6 +81,9 @@ export default function initializeWorkerMain() {
    */
   let playbackObservationRef: SharedReference<IWorkerPlaybackObservation> | null = null;
 
+  globalScope.onmessageerror = (_msg: MessageEvent) => {
+    log.error("MTCI: Error when receiving message from main thread.");
+  };
   onmessage = function (e: MessageEvent<IMainThreadMessage>) {
     log.debug("Worker: received message", e.data.type);
 
@@ -401,6 +405,11 @@ export default function initializeWorkerMain() {
         break;
       }
 
+      case MainThreadMessageType.ConfigUpdate: {
+        config.update(msg.value);
+        break;
+      }
+
       default:
         assertUnreachable(msg);
     }
@@ -514,23 +523,26 @@ function loadOrReloadPreparedContent(
     segmentQueueCreator,
   } = preparedContent;
   const { drmSystemId, enableFastSwitching, initialTime, onCodecSwitch } = val;
-  playbackObservationRef.onUpdate((observation) => {
-    if (preparedContent.decipherabilityFreezeDetector.needToReload(observation)) {
-      handleMediaSourceReload({
-        timeOffset: 0,
-        minimumPosition: 0,
-        maximumPosition: Infinity,
-      });
-    }
-
-    // Synchronize SegmentSinks with what has been buffered.
-    ["video" as const, "audio" as const, "text" as const].forEach((tType) => {
-      const segmentSinkStatus = segmentSinksStore.getStatus(tType);
-      if (segmentSinkStatus.type === "initialized") {
-        segmentSinkStatus.value.synchronizeInventory(observation.buffered[tType] ?? []);
+  playbackObservationRef.onUpdate(
+    (observation) => {
+      if (preparedContent.decipherabilityFreezeDetector.needToReload(observation)) {
+        handleMediaSourceReload({
+          timeOffset: 0,
+          minimumPosition: 0,
+          maximumPosition: Infinity,
+        });
       }
-    });
-  });
+
+      // Synchronize SegmentSinks with what has been buffered.
+      ["video" as const, "audio" as const, "text" as const].forEach((tType) => {
+        const segmentSinkStatus = segmentSinksStore.getStatus(tType);
+        if (segmentSinkStatus.type === "initialized") {
+          segmentSinkStatus.value.synchronizeInventory(observation.buffered[tType] ?? []);
+        }
+      });
+    },
+    { clearSignal: currentLoadCanceller.signal },
+  );
 
   const initialPeriod =
     manifest.getPeriodForTime(initialTime) ?? manifest.getNextPeriod(initialTime);
@@ -884,6 +896,10 @@ function loadOrReloadPreparedContent(
         );
       },
       (err: unknown) => {
+        if (TaskCanceller.isCancellationError(err)) {
+          log.info("WP: A reloading operation was cancelled");
+          return;
+        }
         sendMessage({
           type: WorkerMessageType.Error,
           contentId,
