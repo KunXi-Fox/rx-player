@@ -1,17 +1,28 @@
 # Changelog
 
-## Current dev build: v4.3.0-dev.2024112900
+## Current dev build: v4.3.0-dev.2025012900
 
 ### Features
 
 - Add the possibility to rely on `ManagedMediaSource` on iOS devices [#1562]
+- DRM: Add `keySystems[].wantedSessionTypes` `loadVideo` option to also initialize a
+  config for future contents, not just the current one [#1604]
 
 ### Bug fixes
 
-- tracks API should not returned unplayable representations by default [#1599]
+- Tracks API do not return unplayable representations by default [#1599]
 - MULTI_THREAD: Fix `onmessageerror` being undefined on older devices [#1585]
 - Compat: On "FREEZING" try to un-freeze regardless of if the wanted position was reached
   to fix a remaining Tizen (Samsung) infinite rebuffering issue [#1586]
+- DRM: fix typo which prevented `MediaKeys` reusage on some devices including desktop
+  browsers [#1615]
+- DRM: Only ask for `"persistent-license"` `MediaKeySession` (and not also for
+  `"temporary"` license) when only a `keySystems[].persistentLicenseConfig` is
+  communicated [#1604]
+- DRM: Fix reusage of some `keySystems[]` option changing when reusing a
+  `MediaKeySystemAccess` with a different `keySystems[]` configuration [#1616]
+- On Tizen, fix infinite loading that may occur in some condition if both the audio and
+  video segments have a gap at the expected initial position [#1637]
 
 ### Other improvements
 
@@ -19,8 +30,13 @@
   before seeking ourselves over a discontinuity [#1587]
 - DRM: Only reuse cached `MediaKeySystemAccess` if none is more wanted for the current
   content [#1591]
+- MULTI_THREAD: Some `LOADING` and `RELOADING` attempts may have taken more time than
+  necessary due to a wrong "initial Period prediction", this is fixed [#1628]
+- DRM: Reuse cache even if key system type given in API is not the same [#1611]
 - DEBUG_ELEMENT: Add buffer size estimate to debug buffer content graph [#1558]
 - DEBUG_ELEMENT: Add `hdr` information to video Representation [#1583]
+- tests: Our performance-regression tests now run on all RxPlayer updates to better
+  protect against performance regressions [#1630]
 
 ## v4.2.0 (2024-10-17)
 

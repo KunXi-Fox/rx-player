@@ -184,13 +184,23 @@ function buildKeySystemConfigurations(
   keySystemTypeInfo: IKeySystemType,
 ): MediaKeySystemConfiguration[] {
   const { keyName, keyType, keySystemOptions: keySystem } = keySystemTypeInfo;
-  const sessionTypes = ["temporary"];
+  let sessionTypes: string[];
   let persistentState: MediaKeysRequirement = "optional";
   let distinctiveIdentifier: MediaKeysRequirement = "optional";
 
-  if (!isNullOrUndefined(keySystem.persistentLicenseConfig)) {
+  if (Array.isArray(keySystem.wantedSessionTypes)) {
+    sessionTypes = keySystem.wantedSessionTypes;
+    if (
+      arrayIncludes(keySystem.wantedSessionTypes, "persistent-license") &&
+      !isNullOrUndefined(keySystem.persistentLicenseConfig)
+    ) {
+      persistentState = "required";
+    }
+  } else if (!isNullOrUndefined(keySystem.persistentLicenseConfig)) {
     persistentState = "required";
-    sessionTypes.push("persistent-license");
+    sessionTypes = ["persistent-license"];
+  } else {
+    sessionTypes = ["temporary"];
   }
 
   if (!isNullOrUndefined(keySystem.persistentState)) {
@@ -478,7 +488,7 @@ export default function getMediaKeySystemAccess(
         currentState !== null &&
         !shouldRenewMediaKeySystemAccess() &&
         // TODO: Do it with MediaKeySystemAccess.prototype.keySystem instead?
-        keyType === currentState.keySystemOptions.type &&
+        keyType === currentState.mediaKeySystemAccess.keySystem &&
         eme.implementation === currentState.emeImplementation.implementation &&
         isNewMediaKeySystemConfigurationCompatibleWithPreviousOne(
           keySystemConfiguration,
@@ -491,7 +501,7 @@ export default function getMediaKeySystemAccess(
           value: {
             mediaKeySystemAccess: currentState.mediaKeySystemAccess,
             askedConfiguration: currentState.askedConfiguration,
-            options: currentState.keySystemOptions,
+            options: keySystemOptions,
             codecSupport: extractCodecSupportListFromConfiguration(
               currentState.askedConfiguration,
               currentState.mediaKeySystemAccess.getConfiguration(),
