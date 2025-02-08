@@ -383,7 +383,7 @@ export default class TracksStore extends EventEmitter<ITracksStoreEvents> {
       log.error(
         `TS: Subject already added for ${bufferType} ` + `and Period ${period.start}`,
       );
-      return;
+      periodObj[bufferType].dispatcher.dispose();
     }
 
     const dispatcher = new TrackDispatcher(adaptationRef);
