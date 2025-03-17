@@ -297,6 +297,20 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
         }
         break;
 
+      case "-5":
+      case "--es5":
+        {
+          argOffset++;
+          const wantedOutput = args[argOffset];
+          if (wantedOutput === undefined) {
+            console.error("ERROR: no output file provided for -5/--es5 option\n");
+            displayHelp();
+            process.exit(1);
+          }
+          outputFile = path.normalize(wantedOutput);
+        }
+        break;
+
       default: {
         console.error('ERROR: unknown option: "' + currentArg + '"\n');
         displayHelp();
