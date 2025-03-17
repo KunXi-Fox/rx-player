@@ -235,6 +235,108 @@ export default async function runBundler(inputFile, options) {
   }
 }
 
+// If true, this script is called directly
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const args = process.argv.slice(2);
+  let shouldWatch = false;
+  let shouldMinify = false;
+  let production = false;
+  let globalScope = false;
+  let outputFile = "";
+  let silent = false;
+
+  if (args[0] === "-h" || args[0] === "--help") {
+    displayHelp();
+    process.exit(0);
+  }
+  for (let argOffset = 1; argOffset < args.length; argOffset++) {
+    const currentArg = args[argOffset];
+    switch (currentArg) {
+      case "-h":
+      case "--help": {
+        displayHelp();
+        process.exit(0);
+      }
+
+      case "-w":
+      case "--watch":
+        shouldWatch = true;
+        break;
+
+      case "-m":
+      case "--minify":
+        shouldMinify = true;
+        break;
+
+      case "-p":
+      case "--production-mode":
+        production = true;
+        break;
+
+      case "-g":
+      case "--globals":
+        globalScope = true;
+        break;
+
+      case "-s":
+      case "--silent":
+        silent = true;
+        break;
+
+      case "-o":
+      case "--output":
+        {
+          argOffset++;
+          const wantedOutput = args[argOffset];
+          if (wantedOutput === undefined) {
+            console.error("ERROR: no output file provided\n");
+            displayHelp();
+            process.exit(1);
+          }
+          outputFile = path.normalize(wantedOutput);
+        }
+        break;
+
+      default: {
+        console.error('ERROR: unknown option: "' + currentArg + '"\n');
+        displayHelp();
+        process.exit(1);
+      }
+    }
+  }
+
+  const inputFile = args[0];
+  if (inputFile === undefined) {
+    console.error("ERROR: no input file provided\n");
+    displayHelp();
+    process.exit(1);
+  }
+
+  const normalizedPath = path.normalize(inputFile);
+  if (!fs.existsSync(normalizedPath)) {
+    console.error(`ERROR: input file not found: ${inputFile}\n`);
+    displayHelp();
+    process.exit(1);
+  }
+
+  try {
+    runBundler(normalizedPath, {
+      watch: shouldWatch,
+      minify: shouldMinify,
+      production,
+      globalScope,
+      silent,
+      outfile: outputFile,
+    }).catch((err) => {
+      console.error(`ERROR: ${err}\n`);
+      process.exit(1);
+    });
+  } catch (err) {
+    console.error(`ERROR: ${err}\n`);
+    process.exit(1);
+  }
+}
+
 /**
  * Simple promisified `fs.readFile` API.
  * @param {string} filePath
@@ -317,7 +419,10 @@ async function transpileToEs5(options) {
  */
 function displayHelp() {
   console.log(
-    `Usage: node run_bundler.mjs input-file [options]
+    `run_bundler.mjs: Produce a RxPlayer bundle (a single JS file containing the RxPlayer).
+
+Usage: node run_bundler.mjs <INPUT FILE> [OPTIONS]
+
 Available options:
   -h, --help                  Display this help message
   -m, --minify                Minify the built bundle
@@ -327,9 +432,7 @@ Available options:
                               output filename (e.g. '-5 "dist/rx-player.es5.js"')
   -p, --production-mode       Build all files in production mode (less runtime checks, mostly).
   -g, --globals               Add the RxPlayer to the global scope.
-  -g, --global-scope          If set, enable "global scope mode" (the \`__GLOBAL_SCOPE__\` global
-                              symbol) on the bundle.
-  -s, --silent                Don't log to stdout/stderr when bundling
-  -w, --watch                 Re-build each time either the files it depends on changed`,
+  -s, --silent                Don't log to stdout/stderr when bundling.
+  -w, --watch                 Re-build each time any of the files depended on changed.`,
   );
 }
