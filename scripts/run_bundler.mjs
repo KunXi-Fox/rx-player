@@ -423,7 +423,7 @@ async function transpileToEs5(options) {
     inputSourceMap,
     sourceMaps: true,
   });
-  await writeFile(outfile, output.code);
+  await writeFile(outfile, `(function(){${output.code}})();`);
   await writeFile(outfile + '.map', output.map);
 }
 
