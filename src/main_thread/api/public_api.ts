@@ -691,7 +691,6 @@ class Player extends EventEmitter<IPublicAPIEvent> {
   /**
    * Destroy current media source and re-attach new one.
    *
-   * @remarks
    * This method is useful when the media source is corrupted and needs to be reloaded.
    * In some of legacy CDM implementations (e.g. Tizen 3.0), they try to decrypt the segment with first loaded init segment
    * When the assets starts with non-drm protected content and switch to drm protected segment
@@ -701,9 +700,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
    */
   public reloadMediaSource(): void {
     if (this._priv_contentInfos === null) {
-      log.warn("API: No content is currently loaded.");
-
-      return;
+      throw new Error("API: No content is currently loaded.");
     }
 
     this._priv_contentInfos.playbackObserver.sendReloadMediaSourceRequest();
