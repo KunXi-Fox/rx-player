@@ -559,8 +559,19 @@ function getKeyIdFromInitSegment(segment: Uint8Array): Uint8Array | null {
     return null;
   }
   const keyId = tenc.subarray(8, 24);
+  // notice that uint8Array.every is not works on PS4, so we use the for loop
+  // to check if the keyId is all zero
   // Zero-filled keyId should only be valid for unencrypted content
-  return keyId.every((b) => b === 0) ? null : keyId;
+  for (let i = 0; i < 16; i++) {
+    if (keyId[i] !== 0) {
+      break;
+    }
+    if (i === 15) {
+      return null;
+    }
+  }
+
+  return keyId;
 }
 
 export {
