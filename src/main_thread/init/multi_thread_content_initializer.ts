@@ -40,7 +40,7 @@ import type {
   IKeySystemOption,
   IPlayerError,
 } from "../../public_types";
-import type { ITransportOptions } from "../../transports";
+import type { IThumbnailResponse, ITransportOptions } from "../../transports";
 import arrayFind from "../../utils/array_find";
 import assert, { assertUnreachable } from "../../utils/assert";
 import idGenerator from "../../utils/id_generator";
@@ -115,14 +115,30 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
    */
   private _currentMediaSourceCanceller: TaskCanceller;
 
-  /**
-   * Stores the resolvers and the current messageId that is sent to the web worker to
-   * receive segment sink metrics.
-   * The purpose of collecting metrics is for monitoring and debugging.
-   */
-  private _segmentMetrics: {
-    lastMessageId: number;
-    resolvers: Map<number, (value: ISegmentSinkMetrics | undefined) => void>;
+  private _awaitingRequests: {
+    nextRequestId: number;
+    /**
+     * Stores the resolvers and the current messageId that is sent to the web worker to
+     * receive segment sink metrics.
+     * The purpose of collecting metrics is for monitoring and debugging.
+     */
+    pendingSinkMetrics: Map<
+      number /* request id */,
+      {
+        resolve: (value: ISegmentSinkMetrics | undefined) => void;
+      }
+    >;
+    /**
+     * Stores the resolvers and the current messageId that is sent to the web worker to
+     * receive image thumbnails.
+     */
+    pendingThumbnailFetching: Map<
+      number /* request id */,
+      {
+        resolve: (value: IThumbnailResponse) => void;
+        reject: (error: Error) => void;
+      }
+    >;
   };
 
   /**
@@ -137,9 +153,10 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
     this._currentMediaSourceCanceller = new TaskCanceller();
     this._currentMediaSourceCanceller.linkToSignal(this._initCanceller.signal);
     this._currentContentInfo = null;
-    this._segmentMetrics = {
-      lastMessageId: 0,
-      resolvers: new Map(),
+    this._awaitingRequests = {
+      nextRequestId: 0,
+      pendingSinkMetrics: new Map(),
+      pendingThumbnailFetching: new Map(),
     };
     this._queuedWorkerMessages = null;
   }
@@ -152,7 +169,7 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
       return;
     }
     const contentId = generateContentId();
-    const { adaptiveOptions, transportOptions, worker } = this._settings;
+    const { adaptiveOptions, transportOptions, useMseInWorker, worker } = this._settings;
     const { wantedBufferAhead, maxVideoBufferSize, maxBufferAhead, maxBufferBehind } =
       this._settings.bufferOptions;
     const initialVideoBitrate = adaptiveOptions.initialBitrates.video;
@@ -167,6 +184,7 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
       initialTime: undefined,
       autoPlay: undefined,
       initialPlayPerformed: null,
+      useMseInWorker,
     };
     sendMessage(worker, {
       type: MainThreadMessageType.PrepareContent,
@@ -184,6 +202,7 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
           lowLatencyMode: this._settings.lowLatencyMode,
         },
         segmentRetryOptions: this._settings.segmentRequestOptions,
+        useMseInWorker,
       },
     });
     this._initCanceller.signal.register(() => {
@@ -1132,9 +1151,11 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
           if (this._currentContentInfo?.contentId !== msgData.contentId) {
             return;
           }
-          const resolveFn = this._segmentMetrics.resolvers.get(msgData.value.messageId);
-          if (resolveFn !== undefined) {
-            resolveFn(msgData.value.segmentSinkMetrics);
+          const sinkObj = this._awaitingRequests.pendingSinkMetrics.get(
+            msgData.value.requestId,
+          );
+          if (sinkObj !== undefined) {
+            sinkObj.resolve(msgData.value.segmentSinkMetrics);
           } else {
             log.error("MTCI: Failed to send segment sink store update");
           }
@@ -1149,6 +1170,24 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
         case WorkerMessageType.LogMessage:
           // Already handled by prepare's handler
           break;
+        case WorkerMessageType.ThumbnailDataResponse: {
+          if (this._currentContentInfo?.contentId !== msgData.contentId) {
+            return;
+          }
+          const tObj = this._awaitingRequests.pendingThumbnailFetching.get(
+            msgData.value.requestId,
+          );
+          if (tObj !== undefined) {
+            if (msgData.value.status === "error") {
+              tObj.reject(formatWorkerError(msgData.value.error));
+            } else {
+              tObj.resolve(msgData.value.data);
+            }
+          } else {
+            log.error("MTCI: Failed to send segment sink store update");
+          }
+          break;
+        }
         default:
           assertUnreachable(msgData);
       }
@@ -1208,7 +1247,11 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
             return;
           }
           stopListening();
-          const err = new EncryptedMediaError("MEDIA_IS_ENCRYPTED_ERROR", errMsg);
+          const err = new EncryptedMediaError("MEDIA_IS_ENCRYPTED_ERROR", errMsg, {
+            keyStatuses: undefined,
+            keySystemConfiguration: undefined,
+            keySystem: undefined,
+          });
           this._onFatalError(err);
         },
         { clearSignal: cancelSignal },
@@ -1375,6 +1418,7 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
       const updatedCodecs = updateManifestCodecSupport(
         manifest,
         this._currentContentInfo?.contentDecryptor ?? null,
+        this._currentContentInfo?.useMseInWorker ?? false,
       );
       if (updatedCodecs.length > 0) {
         sendMessage(this._settings.worker, {
@@ -1585,29 +1629,65 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
       { clearSignal: cancelSignal, emitCurrentValue: true },
     );
 
-    const _getSegmentSinkMetrics: () => Promise<
-      ISegmentSinkMetrics | undefined
-    > = async () => {
-      this._segmentMetrics.lastMessageId++;
-      const messageId = this._segmentMetrics.lastMessageId;
+    const _getSegmentSinkMetrics = async (): Promise<ISegmentSinkMetrics | undefined> => {
+      this._awaitingRequests.nextRequestId++;
+      const requestId = this._awaitingRequests.nextRequestId;
       sendMessage(this._settings.worker, {
         type: MainThreadMessageType.PullSegmentSinkStoreInfos,
-        value: { messageId },
+        value: { requestId },
       });
       return new Promise((resolve, reject) => {
         const rejectFn = (err: CancellationError) => {
           cancelSignal.deregister(rejectFn);
-          this._segmentMetrics.resolvers.delete(messageId);
+          this._awaitingRequests.pendingSinkMetrics.delete(requestId);
           return reject(err);
         };
-        this._segmentMetrics.resolvers.set(
-          messageId,
-          (value: ISegmentSinkMetrics | undefined) => {
+        this._awaitingRequests.pendingSinkMetrics.set(requestId, {
+          resolve: (value: ISegmentSinkMetrics | undefined) => {
             cancelSignal.deregister(rejectFn);
-            this._segmentMetrics.resolvers.delete(messageId);
+            this._awaitingRequests.pendingSinkMetrics.delete(requestId);
             resolve(value);
           },
-        );
+        });
+        cancelSignal.register(rejectFn);
+      });
+    };
+    const _getThumbnailsData = async (
+      periodId: string,
+      thumbnailTrackId: string,
+      time: number,
+    ): Promise<IThumbnailResponse> => {
+      if (this._currentContentInfo === null) {
+        return Promise.reject(new Error("Cannot fetch thumbnails: No content loaded."));
+      }
+      this._awaitingRequests.nextRequestId++;
+      const requestId = this._awaitingRequests.nextRequestId;
+      sendMessage(this._settings.worker, {
+        type: MainThreadMessageType.ThumbnailDataRequest,
+        contentId: this._currentContentInfo.contentId,
+        value: { requestId, periodId, thumbnailTrackId, time },
+      });
+
+      return new Promise((resolve, reject) => {
+        const rejectFn = (err: CancellationError) => {
+          cleanUp();
+          reject(err);
+        };
+        const cleanUp = () => {
+          cancelSignal.deregister(rejectFn);
+          this._awaitingRequests.pendingThumbnailFetching.delete(requestId);
+        };
+
+        this._awaitingRequests.pendingThumbnailFetching.set(requestId, {
+          resolve: (value: IThumbnailResponse) => {
+            cleanUp();
+            resolve(value);
+          },
+          reject: (value: unknown) => {
+            cleanUp();
+            reject(value);
+          },
+        });
         cancelSignal.register(rejectFn);
       });
     };
@@ -1624,6 +1704,7 @@ export default class MultiThreadContentInitializer extends ContentInitializer {
               stopListening();
               this.trigger("loaded", {
                 getSegmentSinkMetrics: _getSegmentSinkMetrics,
+                getThumbnailData: _getThumbnailsData,
               });
             }
           },
@@ -1876,11 +1957,28 @@ export interface IMultiThreadContentInitializerContentInfos {
    * Set to `null` when those considerations are not taken.
    */
   contentDecryptor: IContentDecryptor | null;
+  /**
+   * If `true`, MSE API should be used in the core part of the RxPlayer (in the
+   * WebWorker).
+   * If `false`, they should be relied on on main thread.
+   */
+  useMseInWorker: boolean;
 }
 
 /** Arguments to give to the `InitializeOnMediaSource` function. */
 export interface IInitializeArguments {
+  /** WebWorker inside which the core code runs. */
   worker: Worker;
+  /**
+   * If `true`, MSE API should be used in the core part of the RxPlayer (in the
+   * WebWorker).
+   * If `false`, they should be relied on on main thread.
+   *
+   * This might depend on both browser capabilities and preferences. It is
+   * assumed that the caller perform all those checks, the `ContentInitializer`
+   * won't check again the validity of this value.
+   */
+  useMseInWorker: boolean;
   /** Options concerning the ABR logic. */
   adaptiveOptions: IAdaptiveRepresentationSelectorArguments;
   /** `true` if we should play when loaded. */
@@ -2008,7 +2106,7 @@ function bindNumberReferencesToWorker(
         // overload, but the body here is not aware of that.
         sendMessage(worker, {
           type: MainThreadMessageType.ReferenceUpdate,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
           value: { name: ref[1] as any, newVal: newVal as any },
         });
       },
@@ -2034,13 +2132,14 @@ function formatWorkerError(sentError: ISentError): IPlayerError {
         tracks: sentError.tracks,
       });
     case "EncryptedMediaError":
-      if (sentError.code === "KEY_STATUS_CHANGE_ERROR") {
-        return new EncryptedMediaError(sentError.code, sentError.reason, {
-          keyStatuses: sentError.keyStatuses ?? [],
-        });
-      } else {
-        return new EncryptedMediaError(sentError.code, sentError.reason);
-      }
+      // We assume that everything have already been checked Worker-side here
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      return new EncryptedMediaError(sentError.code, sentError.reason, {
+        keyStatuses: sentError.keyStatuses,
+        keySystemConfiguration: sentError.keySystemConfiguration,
+        keySystem: sentError.keySystem,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
     case "OtherError":
       return new OtherError(sentError.code, sentError.reason);
   }

@@ -37,7 +37,7 @@ import resolveBaseURLs from "./resolve_base_urls";
  * adaptation data.
  * @param {Object} representation
  * @param {Object} adaptation
- * @returns {undefined | Array.<Object>}
+ * @returns {undefined | Array.<Object>}
  */
 function combineInbandEventStreams(
   representation: IRepresentationIntermediateRepresentation,
@@ -118,6 +118,7 @@ function getHDRInformation({
 
 /**
  * Process intermediate representations to create final parsed representations.
+ * In the same order.
  * @param {Array.<Object>} representationsIR
  * @param {Object} context
  * @returns {Array.<Object>}

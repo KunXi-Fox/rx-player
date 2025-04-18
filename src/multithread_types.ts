@@ -30,7 +30,7 @@ import type {
 } from "./mse";
 import type { IFreezingStatus, IRebufferingStatus } from "./playback_observer";
 import type { ICmcdOptions, ITrackType } from "./public_types";
-import type { ITransportOptions } from "./transports";
+import type { IThumbnailResponse, ITransportOptions } from "./transports";
 import type { ILogFormat, ILoggerLevel } from "./utils/logger";
 import type { IRange } from "./utils/ranges";
 
@@ -56,14 +56,6 @@ export interface IInitMessage {
      * elements (`<audio>` tags).
      */
     hasVideo: boolean;
-    /**
-     * If `true` the current platform exposes Media Source extensions (MSE) API
-     * in a WebWorker environment.
-     *
-     * If `false`, every MSE API has to be called on the main thread, usually
-     * by messages posted by the WebWorker.
-     */
-    hasMseInWorker: boolean;
     /** Initial logging level that should be set. */
     logLevel: ILoggerLevel;
     /** Intitial logger's log format that should be set. */
@@ -148,6 +140,16 @@ export interface IContentInitializationData {
   manifestRetryOptions: Omit<IManifestFetcherSettings, "cmcdDataBuilder">;
   /** Options relative to the fetching of media segments. */
   segmentRetryOptions: ISegmentQueueCreatorBackoffOptions;
+  /**
+   * If `true`, MSE API should be used in the core part of the RxPlayer (in the
+   * WebWorker).
+   * If `false`, they should be relied on on main thread.
+   *
+   * This might depend on both browser capabilities and preferences. It is
+   * assumed that the caller perform all those checks, the core won't check
+   * again the validity of this value.
+   */
+  useMseInWorker: boolean;
 }
 
 export interface ILogLevelUpdateMessage {
@@ -534,6 +536,18 @@ export interface IRemoveTextDataErrorMessage {
   };
 }
 
+/** Message sent from main thread when it wants to fetch thumbnail data. */
+export interface IThumbnailDataRequestMainMessage {
+  type: MainThreadMessageType.ThumbnailDataRequest;
+  contentId: string;
+  value: {
+    requestId: number;
+    periodId: string;
+    thumbnailTrackId: string;
+    time: number;
+  };
+}
+
 /**
  * Template for a message originating from main thread to update
  * `SharedReference` objects (a common abstraction of the RxPlayer allowing for
@@ -557,7 +571,7 @@ export type IReferenceUpdateMessage =
 
 export interface IPullSegmentSinkStoreInfos {
   type: MainThreadMessageType.PullSegmentSinkStoreInfos;
-  value: { messageId: number };
+  value: { requestId: number };
 }
 
 export const enum MainThreadMessageType {
@@ -582,6 +596,7 @@ export const enum MainThreadMessageType {
   StopContent = "stop",
   TrackUpdate = "track-update",
   PullSegmentSinkStoreInfos = "pull-segment-sink-store-infos",
+  ThumbnailDataRequest = "thumbnail-request",
 }
 
 export type IMainThreadMessage =
@@ -605,7 +620,8 @@ export type IMainThreadMessage =
   | IPushTextDataErrorMessage
   | IRemoveTextDataErrorMessage
   | IMediaSourceReadyStateChangeMainMessage
-  | IPullSegmentSinkStoreInfos;
+  | IPullSegmentSinkStoreInfos
+  | IThumbnailDataRequestMainMessage;
 
 export type ISentError =
   | ISerializedNetworkError
@@ -956,8 +972,24 @@ export interface ISegmentSinkStoreUpdateMessage {
   contentId: string;
   value: {
     segmentSinkMetrics: ISegmentSinkMetrics;
-    messageId: number;
+    requestId: number;
   };
+}
+
+export interface IThumbnailDataResponseWorkerMessage {
+  type: WorkerMessageType.ThumbnailDataResponse;
+  contentId: string;
+  value:
+    | {
+        status: "error";
+        requestId: number;
+        error: ISentError;
+      }
+    | {
+        status: "success";
+        requestId: number;
+        data: IThumbnailResponse;
+      };
 }
 
 export const enum WorkerMessageType {
@@ -998,6 +1030,7 @@ export const enum WorkerMessageType {
   UpdatePlaybackRate = "update-playback-rate",
   Warning = "warning",
   SegmentSinkStoreUpdate = "segment-sink-store-update",
+  ThumbnailDataResponse = "thumbnail-response",
 }
 
 export type IWorkerMessage =
@@ -1037,4 +1070,5 @@ export type IWorkerMessage =
   | IUpdateMediaSourceDurationWorkerMessage
   | IUpdatePlaybackRateWorkerMessage
   | IWarningWorkerMessage
-  | ISegmentSinkStoreUpdateMessage;
+  | ISegmentSinkStoreUpdateMessage
+  | IThumbnailDataResponseWorkerMessage;

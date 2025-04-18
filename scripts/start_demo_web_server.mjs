@@ -100,6 +100,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       case "--help":
         displayHelp();
         process.exit(0);
+        break;
       case "-1":
       case "--single-build":
         singleBuild = true;
@@ -120,6 +121,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       case "--include-wasm":
         includeWasmParser = true;
         break;
+
+      case "--":
+        argOffset = args.length;
+        break;
+
       default: {
         console.error('ERROR: unknown option: "' + currentArg + '"\n');
         displayHelp();

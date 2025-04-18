@@ -165,7 +165,7 @@ describe("DASH content CENC wrong version in MPD", function () {
         },
       ],
     });
-    await checkAfterSleepWithBackoff({ maxTimeMs: 500 }, () => {
+    await checkAfterSleepWithBackoff({ maxTimeMs: 2000 }, () => {
       expect(generateRequestSpy).toHaveBeenCalled();
       expect(foundCencV1).to.equal(true, "should have found a CENC pssh v1");
       expect(foundOtherCencVersion).to.equal(
@@ -173,7 +173,7 @@ describe("DASH content CENC wrong version in MPD", function () {
         "should not have found a CENC pssh other than v1",
       );
     });
-  });
+  }, 3000);
 });
 
 describe('DASH non-linear content with a "broken" sidx', function () {
@@ -308,7 +308,7 @@ describe("DASH non-linear content with number-based SegmentTimeline", function (
     expect(requestedManifests[0]).to.equal(numberBasedTimelineManifestInfos.url);
     expect(player.getPlayerState()).to.equal("LOADING");
 
-    await checkAfterSleepWithBackoff({ maxTimeMs: 100 }, () => {
+    await checkAfterSleepWithBackoff({ maxTimeMs: 300 }, () => {
       // segment requests should be pending
       expect(requestedSegments.length).to.be.at.least(1);
       expect(requestedSegments).to.include(

@@ -23,7 +23,7 @@ import removeDir from "./utils/remove_dir.mjs";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
-const ROOT_DIR = path.join(currentDirectory, "../");
+const ROOT_DIR = path.join(currentDirectory, "..");
 const BUILD_ARTEFACTS_TO_REMOVE = [
   "dist/commonjs",
   "dist/es2017",
@@ -38,32 +38,36 @@ const ES5_WORKER_OUT_FILE = path.join(ROOT_DIR, "dist/worker.es5.js");
  * @param {Object|undefined} [options]
  * @param {boolean|undefined} [options.devMode]
  * @param {boolean|undefined} [options.noCheck]
+ * @param {boolean|undefined} [options.noWasm]
  * @returns {Promise}
  */
 export default async function generateBuild(options = {}) {
   try {
     const devMode = options.devMode === true;
     const noCheck = options.noCheck === true;
+    const noWasm = options.noWasm === true;
     console.log(" 🧹 Removing previous build artefacts...");
     await removePreviousBuildArtefacts();
 
-    const distDir = path.join(ROOT_DIR, "./dist");
+    const distDir = path.join(ROOT_DIR, "dist");
     if (!fs.existsSync(distDir)) {
       fs.mkdirSync(distDir);
     }
 
-    const dashWasmDir = path.join(distDir, "./mpd-parser.wasm");
-    if (!fs.existsSync(dashWasmDir)) {
-      console.log(" 🏭 Generating WebAssembly file...");
-      await spawnProm(
-        "npm run --silent " + (devMode ? "build:wasm:debug" : "build:wasm:release"),
-        [],
-        (code) => new Error(`WebAssembly compilation process exited with code ${code}`),
-      );
-    } else {
-      console.log(
-        " 🏭 Reusing already-generated WebAssembly file (please re-compile it if source changed).",
-      );
+    if (!noWasm) {
+      const dashWasmDir = path.join(distDir, "mpd-parser.wasm");
+      if (!fs.existsSync(dashWasmDir)) {
+        console.log(" 🏭 Generating WebAssembly file...");
+        await spawnProm(
+          "npm run --silent " + (devMode ? "build:wasm:debug" : "build:wasm:release"),
+          [],
+          (code) => new Error(`WebAssembly compilation process exited with code ${code}`),
+        );
+      } else {
+        console.log(
+          " 🏭 Reusing already-generated WebAssembly file (please re-compile it if source changed).",
+        );
+      }
     }
 
     console.log(" 👷 Bundling worker files...");
@@ -79,7 +83,7 @@ export default async function generateBuild(options = {}) {
     ]);
 
     console.log(" 🤖 Generating embedded code...");
-    await generateEmbeds();
+    await generateEmbeds({ noWasm });
 
     console.log(" ⚙️ Compiling project with TypeScript...");
     await compile({ devMode, noCheck });
@@ -166,6 +170,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
   let devMode = false;
   let noCheck = false;
+  let noWasm = false;
   for (let argOffset = 0; argOffset < args.length; argOffset++) {
     const currentArg = args[argOffset];
     switch (currentArg) {
@@ -173,6 +178,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       case "--help":
         displayHelp();
         process.exit(0);
+        break;
       case "-d":
       case "--dev-mode":
         devMode = true;
@@ -180,6 +186,12 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       case "-n":
       case "--no-check":
         noCheck = true;
+        break;
+      case "--no-wasm":
+        noWasm = true;
+        break;
+      case "--":
+        argOffset = args.length;
         break;
       default: {
         console.error('ERROR: unknown option: "' + currentArg + '"\n');
@@ -192,6 +204,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     generateBuild({
       devMode,
       noCheck,
+      noWasm,
     }).catch((err) => {
       console.error(`ERROR: ${err}\n`);
       process.exit(1);
@@ -210,11 +223,13 @@ function displayHelp() {
   console.log(
     `generate_build.mjs: Produce the main RxPlayer's builds (do not produce RxPlayer bundles).
 
-Usage: node build_worker.mjs [OPTIONS]
+Usage: node generate_build.mjs [OPTIONS]
 
 Options:
   -h, --help             Display this help
-  -p, --dev-mode         Build all files in development mode (more runtime checks, worker not minified)
-  -n, --no-check         Skip type checking for inputed files.`,
+  -d, --dev-mode         Build all files in development mode (more runtime checks, worker not minified)
+  -n, --no-check         Skip type checking for inputed files.
+  --no-wasm              Skip WebAssembly file generation (avoid Rust toolchain installation).
+                         WARNING: With this option, related JS exports will not be available.`,
   );
 }

@@ -1,7 +1,9 @@
+import { MediaSource_ } from "../../../compat/browser_compatibility_types";
 import features from "../../../features";
 import log from "../../../log";
 import type { IManifest, IManifestMetadata } from "../../../manifest";
 import { createRepresentationFilterFromFnString } from "../../../manifest";
+import type Manifest from "../../../manifest/classes";
 import type { IMediaSourceInterface } from "../../../mse";
 import MainMediaSourceInterface from "../../../mse/main_media_source_interface";
 import WorkerMediaSourceInterface from "../../../mse/worker_media_source_interface";
@@ -13,6 +15,7 @@ import { WorkerMessageType } from "../../../multithread_types";
 import type { IPlayerError } from "../../../public_types";
 import assert from "../../../utils/assert";
 import idGenerator from "../../../utils/id_generator";
+import isNullOrUndefined from "../../../utils/is_null_or_undefined";
 import objectAssign from "../../../utils/object_assign";
 import type {
   CancellationError,
@@ -24,6 +27,9 @@ import createAdaptiveRepresentationSelector from "../../adaptive";
 import CmcdDataBuilder from "../../cmcd";
 import type { IManifestRefreshSettings } from "../../fetchers";
 import { ManifestFetcher, SegmentQueueCreator } from "../../fetchers";
+import CdnPrioritizer from "../../fetchers/cdn_prioritizer";
+import createThumbnailFetcher from "../../fetchers/thumbnails/thumbnail_fetcher";
+import type { IThumbnailFetcher } from "../../fetchers/thumbnails/thumbnail_fetcher";
 import SegmentSinksStore from "../../segment_sinks";
 import type { INeedsMediaSourceReloadPayload } from "../../stream";
 import FreezeResolver from "../common/FreezeResolver";
@@ -74,17 +80,10 @@ export default class ContentPreparer {
   private _currentMediaSourceCanceller: TaskCanceller;
 
   /** @see constructor */
-  private _hasMseInWorker: boolean;
-
-  /** @see constructor */
   private _hasVideo: boolean;
 
   /**
    * @param {Object} capabilities
-   * @param {boolean} capabilities.hasMseInWorker - If `true`, the current
-   * environment has access to MediaSource API in a WebWorker context (so,
-   * here).
-   * If `false`, we have to go through the main thread to rely on all MSE API.
    * @param {boolean} capabilities.hasVideo - If `true`, we're playing on an
    * element which has video capabilities.
    * If `false`, we're only able to play audio, optionally with subtitles.
@@ -92,17 +91,10 @@ export default class ContentPreparer {
    * Typically this boolean is `true` for `<video>` HTMLElement and `false` for
    * `<audio>` HTMLElement.
    */
-  constructor({
-    hasMseInWorker,
-    hasVideo,
-  }: {
-    hasMseInWorker: boolean;
-    hasVideo: boolean;
-  }) {
+  constructor({ hasVideo }: { hasVideo: boolean }) {
     this._currentContent = null;
     this._currentMediaSourceCanceller = new TaskCanceller();
     this._hasVideo = hasVideo;
-    this._hasMseInWorker = hasMseInWorker;
     const contentCanceller = new TaskCanceller();
     this._contentCanceller = contentCanceller;
   }
@@ -130,8 +122,14 @@ export default class ContentPreparer {
 
       currentMediaSourceCanceller.linkToSignal(contentCanceller.signal);
 
-      const { contentId, url, hasText, transportOptions, enableRepresentationAvoidance } =
-        context;
+      const {
+        contentId,
+        url,
+        hasText,
+        transportOptions,
+        useMseInWorker,
+        enableRepresentationAvoidance,
+      } = context;
       let manifest: IManifest | null = null;
 
       // TODO better way
@@ -176,11 +174,16 @@ export default class ContentPreparer {
         },
       );
 
+      const cdnPrioritizer = new CdnPrioritizer(contentCanceller.signal);
       const segmentQueueCreator = new SegmentQueueCreator(
         dashPipelines,
+        cdnPrioritizer,
         cmcdDataBuilder,
         context.segmentRetryOptions,
-        contentCanceller.signal,
+      );
+      const fetchThumbnailData = createThumbnailFetcher(
+        dashPipelines.thumbnails,
+        cdnPrioritizer,
       );
 
       const trackChoiceSetter = new TrackChoiceSetter();
@@ -189,7 +192,7 @@ export default class ContentPreparer {
         createMediaSourceInterfaceAndSegmentSinksStore(
           contentId,
           {
-            hasMseInWorker: this._hasMseInWorker,
+            useMseInWorker,
             hasVideo: this._hasVideo,
             hasText,
           },
@@ -207,8 +210,10 @@ export default class ContentPreparer {
         representationEstimator,
         segmentSinksStore,
         segmentQueueCreator,
+        fetchThumbnailData,
         workerTextSender,
         trackChoiceSetter,
+        useMseInWorker,
       };
       mediaSource.addEventListener(
         "mediaSourceOpen",
@@ -269,7 +274,7 @@ export default class ContentPreparer {
         ) {
           return;
         }
-
+        updateCodecSupportInWorkerMode(manifest);
         const sentManifest = manifest.getMetadataSnapshot();
         manifest.addEventListener(
           "manifestUpdate",
@@ -349,7 +354,7 @@ export default class ContentPreparer {
       createMediaSourceInterfaceAndSegmentSinksStore(
         this._currentContent.contentId,
         {
-          hasMseInWorker: this._hasMseInWorker,
+          useMseInWorker: this._currentContent.useMseInWorker,
           hasVideo: this._hasVideo,
           hasText: this._currentContent.workerTextSender !== null,
         },
@@ -447,17 +452,25 @@ export interface IPreparedContentData {
    * fetching.
    */
   segmentQueueCreator: SegmentQueueCreator;
+  /** Allows to load image thumbnails. */
+  fetchThumbnailData: IThumbnailFetcher;
   /**
    * Allows to store and update the wanted tracks and Representation inside that
    * track.
    */
   trackChoiceSetter: TrackChoiceSetter;
+  /**
+   * If `true`, MSE API should be used in the core part of the RxPlayer (in the
+   * WebWorker).
+   * If `false`, they should be relied on on main thread.
+   */
+  useMseInWorker: boolean;
 }
 
 /**
  * @param {string} contentId
  * @param {Object} capabilities
- * @param {boolean} capabilities.hasMseInWorker
+ * @param {boolean} capabilities.useMseInWorker
  * @param {boolean} capabilities.hasVideo
  * @param {boolean} capabilities.hasText
  * @param {Object} cancelSignal
@@ -466,14 +479,14 @@ export interface IPreparedContentData {
 function createMediaSourceInterfaceAndSegmentSinksStore(
   contentId: string,
   capabilities: {
-    hasMseInWorker: boolean;
+    useMseInWorker: boolean;
     hasVideo: boolean;
     hasText: boolean;
   },
   cancelSignal: CancellationSignal,
 ): [IMediaSourceInterface, SegmentSinksStore, WorkerTextDisplayerInterface | null] {
   let mediaSourceInterface: IMediaSourceInterface;
-  if (capabilities.hasMseInWorker) {
+  if (capabilities.useMseInWorker) {
     const mainMediaSource = new MainMediaSourceInterface(generateMediaSourceId());
     mediaSourceInterface = mainMediaSource;
 
@@ -522,4 +535,35 @@ function createMediaSourceInterfaceAndSegmentSinksStore(
   });
 
   return [mediaSourceInterface, segmentSinksStore, textSender];
+}
+
+/**
+ * Set Representation.isCodecSupportedInWebWorker to true or false
+ * If the codec is supported in the current context.
+ * If MSE in worker is not available, the attribute is not set.
+ */
+function updateCodecSupportInWorkerMode(manifestToUpdate: Manifest) {
+  if (isNullOrUndefined(MediaSource_)) {
+    return;
+  }
+
+  const codecsMap = new Map<string, boolean>();
+  for (const period of manifestToUpdate.periods) {
+    const checkedAdaptations = [
+      ...(period.adaptations.video ?? []),
+      ...(period.adaptations.audio ?? []),
+    ];
+    for (const adaptation of checkedAdaptations) {
+      for (const representation of adaptation.representations) {
+        const codec = `${representation.mimeType};codecs="${representation.codecs[0]}"`;
+        if (codecsMap.has(codec)) {
+          representation.isCodecSupportedInWebWorker = codecsMap.get(codec);
+        } else {
+          const supported = MediaSource_.isTypeSupported(codec);
+          representation.isCodecSupportedInWebWorker = supported;
+          codecsMap.set(codec, supported);
+        }
+      }
+    }
+  }
 }

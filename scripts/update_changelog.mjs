@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { exec } from "child_process";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CHANGELOG_PATH = join(currentDir, "../CHANGELOG.md");
+const DEFAULT_CHANGELOG_PATH = join(currentDir, "..", "CHANGELOG.md");
 
 const NOTICE_OPENER_CLOSER = "---";
 const NOTICE_PREFIX = `⚠️  The following "proposed additional changelog lines" were automatically
@@ -43,41 +43,60 @@ The resulting file will be the one commited.
 
 // If true, this script is called directly
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const options = process.argv.slice(2);
-
-  let version;
   let isDevRelease = false;
-  for (const option of options) {
-    if (option.startsWith("-")) {
-      if (option === "-d" || option === "-dev") {
-        isDevRelease = true;
-      } else if (option === "-h" || option === "--help") {
+  let hasFinishedParsingOptions = false;
+  let optionOffset = 0;
+
+  const options = process.argv.slice(2);
+  for (
+    optionOffset = 0;
+    optionOffset < options.length && !hasFinishedParsingOptions;
+    optionOffset++
+  ) {
+    const currentOption = options[optionOffset];
+    switch (currentOption) {
+      case "-h":
+      case "--help":
         displayHelp();
         process.exit(0);
-      } else {
-        console.error("ERROR: Unrecognized option:", option);
-        console.error(
-          "More details on usage by calling node update_changelog.mjs --help",
-        );
-        process.exit(1);
+        break;
+
+      case "-d":
+      case "--dev":
+        isDevRelease = true;
+        break;
+
+      case "--":
+        hasFinishedParsingOptions = true;
+        break;
+
+      default: {
+        if (currentOption.startsWith("-")) {
+          console.error('ERROR: unknown option: "' + currentOption + '"\n');
+          displayHelp();
+          process.exit(1);
+        } else {
+          hasFinishedParsingOptions = true;
+          optionOffset--;
+          break;
+        }
       }
-    } else if (version === undefined) {
-      version = option;
-    } else {
-      console.error("ERROR: Unrecognized option:", option);
-      console.error("More details on usage by calling node update_changelog.mjs --help");
-      process.exit(1);
     }
   }
 
-  if (version === undefined) {
+  if (optionOffset === options.length) {
     console.error("ERROR: Missing version argument.");
+    console.error("More details on usage by calling node update_changelog.mjs --help");
+    process.exit(1);
+  } else if (options.length - optionOffset > 1) {
+    console.error("ERROR: Too many arguments");
     console.error("More details on usage by calling node update_changelog.mjs --help");
     process.exit(1);
   }
 
+  const version = options[optionOffset];
+
   try {
-    const version = process.argv[2];
     updateChangelog({ version, isDevRelease }).catch((err) => {
       console.error("ERROR:", err);
       process.exit(1);
@@ -462,7 +481,7 @@ function getChangelogLines() {
         for (let i = 0; i < splitted.length; i += 2) {
           const mergeSubject = splitted[i];
           const mergeBody = splitted[i + 1];
-          const match = mergeSubject.match(/\ #\d+ /);
+          const match = mergeSubject.match(/ #\d+ /);
           if (match !== null) {
             const issueNumber = match[0].trim();
             linesToAdd.push(mergeBody.trim() + ` [${issueNumber}]`);
@@ -538,9 +557,7 @@ async function readChar(query) {
  * script.
  */
 function displayHelp() {
-  /* eslint-disable no-console */
   console.log(
-    /* eslint-disable indent */
     `update_changelog.mjs: Automatically update the CHANGELOG.md file.
 
 Usage: node update_changelog.mjs [OPTIONS] <VERSION>
@@ -548,7 +565,5 @@ Usage: node update_changelog.mjs [OPTIONS] <VERSION>
 Options:
 -h, --help             Display this help
 -d, --dev              This is for a development release`,
-    /* eslint-enable indent */
   );
-  /* eslint-enable no-console */
 }

@@ -463,6 +463,11 @@ export default function getMediaKeySystemAccess(
         "No key system compatible with your wanted " +
           "configuration has been found in the current " +
           "browser.",
+        {
+          keyStatuses: undefined,
+          keySystemConfiguration: undefined,
+          keySystem: undefined,
+        },
       );
     }
 
@@ -488,7 +493,7 @@ export default function getMediaKeySystemAccess(
       // Check if the current `MediaKeySystemAccess` created cannot be reused here
       if (
         currentState !== null &&
-        !shouldRenewMediaKeySystemAccess() &&
+        !shouldRenewMediaKeySystemAccess(currentState.mediaKeySystemAccess.keySystem) &&
         // TODO: Do it with MediaKeySystemAccess.prototype.keySystem instead?
         keyType === currentState.mediaKeySystemAccess.keySystem &&
         eme.implementation === currentState.emeImplementation.implementation &&

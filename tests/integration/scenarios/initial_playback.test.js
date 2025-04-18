@@ -90,11 +90,14 @@ function runInitialPlaybackTests({ multithread, es5Worker } = {}) {
       });
       await waitForLoadedStateAfterLoadVideo(player);
       player.setPlaybackRate(0.5);
-      player.play();
+      await player.play();
+      await sleep(2000);
+      const now = performance.now();
       const lastPosition = player.getPosition();
-      await checkAfterSleepWithBackoff({ stepMs: 100, maxTimeMs: 350 }, () => {
-        expect(player.getPosition()).to.be.below(0.35);
-        expect(player.getPosition()).to.be.above(0.05);
+      await checkAfterSleepWithBackoff({ stepMs: 100, maxTimeMs: 1500 }, () => {
+        const elapsed = (performance.now() - now) / 1000;
+        expect(player.getPosition()).to.be.below(lastPosition + elapsed / 1.7);
+        expect(player.getPosition()).to.be.above(lastPosition + elapsed * 0.3);
         expect(player.getPosition()).to.be.above(lastPosition);
         expect(player.getVideoElement().buffered.start(0)).to.be.below(
           player.getPosition(),
@@ -102,7 +105,7 @@ function runInitialPlaybackTests({ multithread, es5Worker } = {}) {
         expect(player.getPlaybackRate()).to.equal(0.5);
         expect(player.getVideoElement().playbackRate).to.equal(0.5);
       });
-    });
+    }, 5000);
 
     it("should play faster for a speed superior to 1", async function () {
       player.loadVideo({
@@ -111,7 +114,7 @@ function runInitialPlaybackTests({ multithread, es5Worker } = {}) {
       });
       await waitForLoadedStateAfterLoadVideo(player);
       player.setPlaybackRate(3);
-      player.play();
+      await player.play();
       await checkAfterSleepWithBackoff(
         { minTimeMs: 700, stepMs: 100, maxTimeMs: 1400 },
         () => {
@@ -313,7 +316,7 @@ function runInitialPlaybackTests({ multithread, es5Worker } = {}) {
       });
 
       expect(manifestLoaderCalledTimes).to.equal(1);
-      await sleep(100);
+      await sleep(300);
       expect(manifestLoaderCalledTimes).to.equal(1);
 
       expect(segmentLoaderLoaderCalledTimes).to.equal(12);

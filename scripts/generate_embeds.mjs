@@ -48,33 +48,73 @@ import { dirname, join } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
-const originalWasmFilePath = join(currentDir, "../dist/mpd-parser.wasm");
-const originalWorkerFilePath = join(currentDir, "../dist/worker.js");
-const originalWorkerEs5FilePath = join(currentDir, "../dist/worker.es5.js");
+const originalWasmFilePath = join(currentDir, "..", "dist/mpd-parser.wasm");
+const originalWorkerFilePath = join(currentDir, "..", "dist/worker.js");
+const originalWorkerEs5FilePath = join(currentDir, "..", "/dist/worker.es5.js");
 
-const codeGenDir = join(currentDir, "../src/__GENERATED_CODE");
-const indexPath = join(codeGenDir, "./index.ts");
-const mpdEmbedPath = join(codeGenDir, "./embedded_dash_wasm.ts");
-const workerEmbedPath = join(codeGenDir, "./embedded_worker.ts");
-const workerEs5EmbedPath = join(codeGenDir, "./embedded_worker_es5.ts");
+const codeGenDir = join(currentDir, "..", "src/__GENERATED_CODE");
+const indexPath = join(codeGenDir, "index.ts");
+const mpdEmbedPath = join(codeGenDir, "embedded_dash_wasm.ts");
+const workerEmbedPath = join(codeGenDir, "embedded_worker.ts");
+const workerEs5EmbedPath = join(codeGenDir, "embedded_worker_es5.ts");
 
 // If true, this script is called directly
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  generateEmbeds().catch(() => {
+  const args = process.argv.slice(2);
+  let noWasm = false;
+  let noWorker = false;
+  for (let argOffset = 0; argOffset < args.length; argOffset++) {
+    const currentArg = args[argOffset];
+    switch (currentArg) {
+      case "-h":
+      case "--help":
+        displayHelp();
+        process.exit(0);
+        break;
+      case "--no-wasm":
+        noWasm = true;
+        break;
+      case "--no-worker":
+        noWorker = true;
+        break;
+      case "--":
+        argOffset = args.length;
+        break;
+      default: {
+        console.error('ERROR: unknown option: "' + currentArg + '"\n');
+        displayHelp();
+        process.exit(1);
+      }
+    }
+  }
+  generateEmbeds({ noWasm, noWorker }).catch(() => {
     process.exit(1);
   });
 }
 
-async function generateEmbeds() {
+/**
+ * Generate "embeds" part of the RxPlayer.
+ * @param {Object} [param0={}] - Options.
+ * @param {boolean} [param0.noWasm] - If set to `true`, skip the WebAssembly
+ * embed.
+ * @param {boolean} [param0.noWorker] - If set to `true`, skip the Worker
+ * embed.
+ * @returns {Promise} - Promise resolving when the embed generation is done and
+ * rejecting with an `Error` if anything failed while doing it.
+ */
+export default async function generateEmbeds({ noWasm, noWorker } = {}) {
+  if (noWasm && noWorker) {
+    return;
+  }
   try {
     if (!fs.existsSync(codeGenDir)) {
       fs.mkdirSync(codeGenDir);
     }
     await Promise.all([
-      writeWebAssemblyEmbed(),
-      writeWorkerEmbed(),
-      writeWorkerEs5Embed(),
-      writeIndexCode(),
+      noWasm ? Promise.resolve() : writeWebAssemblyEmbed(),
+      noWorker ? Promise.resolve() : writeWorkerEmbed(),
+      noWorker ? Promise.resolve() : writeWorkerEs5Embed(),
+      writeIndexCode({ noWasm, noWorker }),
     ]);
   } catch (err) {
     console.log(err);
@@ -159,4 +199,19 @@ function writeFile(filePath, content) {
   });
 }
 
-export default generateEmbeds;
+/**
+ * Display through `console.log` an helping message relative to how to run this
+ * script.
+ */
+function displayHelp() {
+  console.log(
+    `generate_embeds.mjs: Produce the RxPlayer's "embedded" files.
+
+Usage: node generate_embeds.mjs [OPTIONS]
+
+Options:
+  -h, --help   Display this help
+  --no-wasm     Skip embed generation for the WebAssembly file(s)
+  --no-worker   Skip embed generation for the Worker file`,
+  );
+}

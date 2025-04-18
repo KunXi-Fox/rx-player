@@ -17,6 +17,7 @@ import { pathToFileURL } from "url";
 import esbuild from "esbuild";
 import swc from "@swc/core";
 import getHumanReadableHours from "./utils/get_human_readable_hours.mjs";
+import PROJECT_ROOT_DIRECTORY from "./utils/project_root_directory.mjs";
 
 // If true, this script is called directly
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -97,6 +98,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
  * Run bundler with the given options.
  * @param {string} inputFile
  * @param {Object} options
+ * @param {boolean} [options.name] - The "name" associated to your bundle, will
+ * be used in logs if `options.silent` is set to `false`.
  * @param {boolean} [options.minify] - If `true`, the output will be minified.
  * @param {boolean} [options.globalScope] - If `true`, enable global scope mode
  * (the `__GLOBAL_SCOPE__` global symbol will be set to `true` in the bundle).
@@ -109,15 +112,25 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
  * produced at that path.
  * @param {string} [options.outfile] - Destination of the produced es2017
  * bundle. To ignore to skip ES2017 bundle generation.
+ * @param {Object} [options.globals] - Optional globally-defined identifiers, as
+ * a key-value objects, where the object is a string (trick: if you want to
+ * replace an identifier with a string, call `JSON.stringify` on it).
  * @returns {Promise}
  */
 export default async function runBundler(inputFile, options) {
+  const name = options.name;
   const minify = !!options.minify;
   const watch = !!options.watch;
   const isDevMode = !options.production;
   const isSilent = options.silent;
   const outfile = options.outfile;
   const es5Outfile = options.es5Outfile;
+  const globals = options.globals;
+  const relativeInFile = path.relative(PROJECT_ROOT_DIRECTORY, inputFile);
+  const relativeOutfile =
+    outfile === undefined
+      ? undefined
+      : path.relative(PROJECT_ROOT_DIRECTORY, options.outfile);
   const globalScope = !!options.globalScope;
 
   if (outfile === undefined && es5Outfile === undefined) {
@@ -127,7 +140,13 @@ export default async function runBundler(inputFile, options) {
   const esbuildStepsPlugin = {
     name: "bundler-steps",
     setup(build) {
-      build.onStart(() => logWarning(`Bundling of ${inputFile} started`));
+      build.onStart(() => {
+        if (name != null) {
+          logWarning(`Bundling for "${name}" started. (${relativeInFile}).`);
+        } else {
+          logWarning(`Bundling of "${relativeInFile}" started.`);
+        }
+      });
       build.onEnd((result) => {
         if (watch && outfile !== undefined && es5Outfile !== undefined) {
           const contents = fs.readFileSync(outfile);
@@ -138,13 +157,17 @@ export default async function runBundler(inputFile, options) {
         if (result.errors.length > 0 || result.warnings.length > 0) {
           const { errors, warnings } = result;
           logWarning(
-            `File re-bundle of ${inputFile} failed with ${errors.length} error(s) and ` +
+            `Re-bundling for "${name ?? inputFile}" failed with ${errors.length} error(s) and ` +
               ` ${warnings.length} warning(s) `,
           );
           return;
         }
-        if (outfile !== undefined) {
-          logSuccess(`File updated at ${outfile}!`);
+        if (relativeOutfile !== undefined) {
+          if (name != null) {
+            logSuccess(`Bundling for "${name}" succeeded. (${relativeOutfile}).`);
+          } else {
+            logSuccess(`Bundling of "${relativeOutfile}" succeeded.`);
+          }
         }
       });
     },
@@ -176,6 +199,7 @@ export default async function runBundler(inputFile, options) {
         }),
         __LOGGER_LEVEL__: JSON.stringify({ CURRENT_LEVEL: isDevMode ? "INFO" : "NONE" }),
         __GLOBAL_SCOPE__: JSON.stringify(globalScope),
+        ...globals,
       },
     });
     if (watch) {
@@ -187,7 +211,7 @@ export default async function runBundler(inputFile, options) {
       await buildAndAnnounceEs5Bundle(contents, inputSourceMap, es5Outfile);
     }
   } catch (err) {
-    logError(`Bundling failed for ${inputFile}:`, err);
+    logError(`Bundling failed for "${name ?? inputFile}":`, err);
     throw err;
   }
 
@@ -244,6 +268,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   let globalScope = false;
   let outputFile = "";
   let silent = false;
+  let name;
 
   if (args[0] === "-h" || args[0] === "--help") {
     displayHelp();
@@ -253,10 +278,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const currentArg = args[argOffset];
     switch (currentArg) {
       case "-h":
-      case "--help": {
+      case "--help":
         displayHelp();
         process.exit(0);
-      }
+        break;
 
       case "-w":
       case "--watch":
@@ -281,6 +306,19 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       case "-s":
       case "--silent":
         silent = true;
+        break;
+
+      case "-n":
+      case "--name":
+        {
+          argOffset++;
+          name = args[argOffset];
+          if (name === undefined) {
+            console.error("ERROR: no name provided\n");
+            displayHelp();
+            process.exit(1);
+          }
+        }
         break;
 
       case "-o":
@@ -309,6 +347,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
           }
           outputFile = path.normalize(wantedOutput);
         }
+      case "--":
+        argOffset = args.length;
         break;
 
       default: {
@@ -341,6 +381,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       globalScope,
       silent,
       outfile: outputFile,
+      name,
     }).catch((err) => {
       console.error(`ERROR: ${err}\n`);
       process.exit(1);
@@ -446,6 +487,7 @@ Available options:
                               output filename (e.g. '-5 "dist/rx-player.es5.js"')
   -p, --production-mode       Build all files in production mode (less runtime checks, mostly).
   -g, --globals               Add the RxPlayer to the global scope.
+  -n, --name                  Optional "name" to refer to your bundle. Will be used for in log output outputs.
   -s, --silent                Don't log to stdout/stderr when bundling.
   -w, --watch                 Re-build each time any of the files depended on changed.`,
   );

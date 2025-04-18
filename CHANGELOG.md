@@ -1,22 +1,43 @@
 # Changelog
 
-## Current dev build: v4.3.0-dev.2025030400
+## Current dev build: v4.4.0-dev.2025041400
+
+### Features
+
+- DRM: Add `keySystem` and `keySystemConfiguration` to most `EncryptedMediaError` so an
+  application can determine which key system caused an issue [#1690]
+
+### Bug fixes
+
+- DRM: renew the mediaKeySystemAccess on Edge and Firefox when using a Playready keySystem
+  to work-around frequent DRM issues. [#1694]
+- DRM: On Firefox check extensively Playready DRMs support before using them to
+  work-around recent firefox issue with PlayReady integration [#1691]
+- MULTI_THREAD: Communicate to `/init` whether we're relying on MSE-in-worker [#1669]
+
+## v4.3.0
 
 ### Features
 
 - Add the possibility to rely on `ManagedMediaSource` on iOS devices [#1562]
+- DASH: Implement DASH Thumbnail tracks by adding `renderThumbnail` and
+  `getAvailableThumbnailTracks` API [#1496]
 - DRM: Add `keySystems[].wantedSessionTypes` `loadVideo` option to also initialize a DRM
   config for future contents, not just the current one [#1604]
 - Add `experimentalOptions.enableRepresentationAvoidance` option to `loadVideo` to enable
-  the new Representation avoidance mechanism [#1523]
+  our new Representation avoidance mechanism [#1523]
 
 ### Bug fixes
 
 - Tracks API do not return unplayable representations by default [#1599]
 - MULTI_THREAD: Fix `onmessageerror` being undefined on older devices [#1585]
+- MULTI_THREAD: Do not attempt to play audio and/or video media data in a Worker whose
+  codec is not supported specifically in a Worker context (previous behavior led to some
+  fatal errors on Edge with HEVC support) [#1664]
 - Compat: On "FREEZING" try to un-freeze regardless of if the wanted position was reached
   to fix a remaining Tizen (Samsung) infinite rebuffering issue [#1586]
 - MULTI_THREAD: Fix error not being thrown on manifest update [#1653]
+- DRM: check that ec-3 codec is supported when encrypted [#1657]
 - DRM: fix typo which prevented `MediaKeys` reusage on some devices including desktop
   browsers [#1615]
 - DRM: Only ask for `"persistent-license"` `MediaKeySession` (and not also for
@@ -24,6 +45,9 @@
   communicated [#1604]
 - DRM: Fix reusage of some `keySystems[]` option changing when reusing a
   `MediaKeySystemAccess` with a different `keySystems[]` configuration [#1616]
+- DRM: Fix `KEY_UPDATE_ERROR` which was mistakenly inheriting the code `KEY_LOAD_ERROR`
+  [#1670]
+- Fix minor memory leak when switching RepresentationStream through ABR [#1665]
 - On Tizen, fix infinite loading that may occur in some condition if both the audio and
   video segments have a gap at the expected initial position [#1637]
 - fix rare infinite rebuffering issues that may happen when updating tracks in a
@@ -43,8 +67,12 @@
 - DRM: Reuse cache even if key system type given in API is not the same [#1611]
 - DEBUG_ELEMENT: Add buffer size estimate to debug buffer content graph [#1558]
 - DEBUG_ELEMENT: Add `hdr` information to video Representation [#1583]
+- Set LogFormat to `full` on RxPlayer's debug mode [#1625]
+- Avoid error log when stopping a stream with a pending `BufferGarbageCollector` buffer
+  removal [#1684]
 - tests: Our performance-regression tests now run on all RxPlayer updates to better
   protect against performance regressions [#1630]
+- CI/tests: CI integration tests on Edge and windows [#1621]
 
 ## v4.2.0 (2024-10-17)
 
