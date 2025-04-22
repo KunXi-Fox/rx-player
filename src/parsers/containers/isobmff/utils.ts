@@ -562,7 +562,7 @@ function getKeyIdFromInitSegment(segment: Uint8Array): Uint8Array | null {
   // notice that uint8Array.every is not works on PS4, so we use the for loop
   // to check if the keyId is all zero
   // Zero-filled keyId should only be valid for unencrypted content
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < keyId.byteLength; i++) {
     if (keyId[i] !== 0) {
       break;
     }
