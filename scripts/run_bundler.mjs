@@ -184,7 +184,7 @@ export default async function runBundler(inputFile, options) {
       banner: {
         // polyfill for getOwnPropertyDescriptors (SamSung 2017 not support it)
         // for references https://github.com/evanw/esbuild/issues/1892
-        js: 'Object.hasOwnProperty("getOwnPropertyDescriptors")||Object.defineProperty(Object,"getOwnPropertyDescriptors",{configurable:!0,writable:!0,value:function(r){if(null==r)throw TypeError("Cannot convert undefined or null to object");var e=Object.getOwnPropertyDescriptor(r,"__proto__"),t=e?((a="__proto__")in(l={})?Object.defineProperty(l,a,{value:e,enumerable:!0,configurable:!0,writable:!0}):l[a]=e,l):{},o=!0,n=!1,i=void 0;try{for(var l,a,c,p=Object.getOwnPropertyNames(r)[Symbol.iterator]();!(o=(c=p.next()).done);o=!0){var b=c.value;t[b]=Object.getOwnPropertyDescriptor(r,b)}}catch(r){n=!0,i=r}finally{try{o||null==p.return||p.return()}finally{if(n)throw i}}return t}});'
+        js: 'Object.hasOwnProperty("getOwnPropertyDescriptors")||Object.defineProperty(Object,"getOwnPropertyDescriptors",{configurable:!0,writable:!0,value:function(r){if(null==r)throw TypeError("Cannot convert undefined or null to object");var e=Object.getOwnPropertyDescriptor(r,"__proto__"),t=e?((a="__proto__")in(l={})?Object.defineProperty(l,a,{value:e,enumerable:!0,configurable:!0,writable:!0}):l[a]=e,l):{},o=!0,n=!1,i=void 0;try{for(var l,a,c,p=Object.getOwnPropertyNames(r)[Symbol.iterator]();!(o=(c=p.next()).done);o=!0){var b=c.value;t[b]=Object.getOwnPropertyDescriptor(r,b)}}catch(r){n=!0,i=r}finally{try{o||null==p.return||p.return()}finally{if(n)throw i}}return t}});Uint8Array.prototype.hasOwnProperty("every")||Object.defineProperty(Uint8Array.prototype,"every",{configurable:!0,writable:!0,value:function(r,e){if(null==this)throw TypeError("Uint8Array.prototype.every called on null or undefined");if("function"!=typeof r)throw TypeError(r+" is not a function");var t=Object(this),o=t.length>>>0;if(0===o)return!1;for(var n=0;n<o;n++)if(n in t&&!1===r.call(e,t[n],n,t))return!1;return!0;}});'
       },
       minify,
       outfile: outfile || es5Outfile,
@@ -347,10 +347,10 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
           }
           outputFile = path.normalize(wantedOutput);
         }
+        break;
       case "--":
         argOffset = args.length;
         break;
-
       default: {
         console.error('ERROR: unknown option: "' + currentArg + '"\n');
         displayHelp();
