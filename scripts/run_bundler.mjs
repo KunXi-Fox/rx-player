@@ -352,6 +352,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
           outputFile = path.normalize(wantedOutput);
         }
         break;
+
       case "--":
         argOffset = args.length;
         break;
