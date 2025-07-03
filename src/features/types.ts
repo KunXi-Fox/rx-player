@@ -33,7 +33,7 @@ import type {
   IHTMLTextTracksParserFn,
   INativeTextTracksParserFn,
 } from "../parsers/texttracks";
-import type { ITransportFunction } from "../transports";
+import type { ISupportedTextTrackFormat, ITransportFunction } from "../transports";
 import type { CancellationSignal } from "../utils/task_canceller";
 
 /**
@@ -61,12 +61,7 @@ export type IHTMLTextTracksBuffer = new (
  */
 export type INativeTextTracksBuffer = new (mediaElement: IMediaElement) => SegmentSink;
 
-export type IDashNativeParser = (
-  dom: Document,
-  args: IMPDParserArguments,
-) => IDashParserResponse<string>;
-
-export type IDashFastJsParser = (
+export type IDashJsParser = (
   xml: string,
   args: IMPDParserArguments,
 ) => IDashParserResponse<string>;
@@ -112,7 +107,9 @@ export interface IFeaturesObject {
    * RxPlayer.
    * Those parsers are specifically destined to be displayed in DOM elements.
    */
-  htmlTextTracksParsers: Partial<Record<string, IHTMLTextTracksParserFn>>;
+  htmlTextTracksParsers: Partial<
+    Record<ISupportedTextTrackFormat, IHTMLTextTracksParserFn>
+  >;
   /**
    * Feature allowing to load contents through MediaSource API through the
    * main thread.
@@ -142,11 +139,7 @@ export interface IFeaturesObject {
     /**
      * Entirely JavaScript-based Manifest DASH parser.
      */
-    fastJs: IDashFastJsParser | null;
-    /**
-     * JavaScript+Browser's DOMParser-based Manifest DASH parser.
-     */
-    native: IDashNativeParser | null;
+    js: IDashJsParser | null;
   };
   /** Implement text track rendering through `<track>` HTML elements. */
   nativeTextDisplayer: typeof NativeTextDisplayer | null;
@@ -156,7 +149,9 @@ export interface IFeaturesObject {
    * Those parsers are specifically destined to be displayed in `<track>` HTML
    * elements.
    */
-  nativeTextTracksParsers: Partial<Record<string, INativeTextTracksParserFn>>;
+  nativeTextTracksParsers: Partial<
+    Record<ISupportedTextTrackFormat, INativeTextTracksParserFn>
+  >;
 }
 
 /**

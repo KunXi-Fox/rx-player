@@ -19,7 +19,6 @@ import Manifest from "../../manifest/classes";
 import { getMDAT } from "../../parsers/containers/isobmff";
 import type { ICdnMetadata } from "../../parsers/manifest";
 import createSmoothManifestParser from "../../parsers/manifest/smooth";
-import type { IPlayerError } from "../../public_types";
 import request from "../../utils/request";
 import { strToUtf8, utf8ToStr } from "../../utils/string_parsing";
 import type { CancellationSignal } from "../../utils/task_canceller";
@@ -37,6 +36,7 @@ import type {
   ISegmentLoaderResultSegmentLoaded,
   ISegmentParserParsedInitChunk,
   ISegmentParserParsedMediaChunk,
+  ISupportedTextTrackFormat,
   ITextTrackSegmentData,
   ITransportOptions,
   ITransportPipelines,
@@ -76,15 +76,10 @@ export default function (transportOptions: ITransportOptions): ITransportPipelin
 
       const parserResult = smoothManifestParser(documentData, url, manifestReceivedTime);
 
-      const warnings: IPlayerError[] = [];
-      const manifest = new Manifest(
-        parserResult,
-        {
-          representationFilter: transportOptions.representationFilter,
-        },
-        warnings,
-      );
-      return { manifest, url, warnings };
+      const manifest = new Manifest(parserResult, {
+        representationFilter: transportOptions.representationFilter,
+      });
+      return { manifest, url };
     },
   };
 
@@ -308,7 +303,7 @@ export default function (transportOptions: ITransportOptions): ITransportPipelin
       let segmentStart: number | undefined;
       let segmentEnd: number | undefined;
       let _sdData: string;
-      let _sdType: string | undefined;
+      let _sdType: ISupportedTextTrackFormat | undefined;
 
       if (isMP4) {
         let chunkBytes: Uint8Array;
@@ -411,6 +406,7 @@ export default function (transportOptions: ITransportOptions): ITransportPipelin
           data: _sdData,
           start: segmentStart,
           end: segmentEnd,
+          initTimescale: initTimescale ?? null,
           language,
         },
         chunkSize,
