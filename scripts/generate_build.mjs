@@ -58,9 +58,11 @@ export default async function generateBuild(options = {}) {
       const dashWasmDir = path.join(distDir, "mpd-parser.wasm");
       if (!fs.existsSync(dashWasmDir)) {
         console.log(" 🏭 Generating WebAssembly file...");
-        await spawnProm(
+        await spawnShellProm(
           "npm run --silent " + (devMode ? "build:wasm:debug" : "build:wasm:release"),
-          [],
+        );
+        await spawnShellProm(
+          "npm run --silent " + (devMode ? "build:wasm:debug" : "build:wasm:release"),
           (code) => new Error(`WebAssembly compilation process exited with code ${code}`),
         );
       } else {
@@ -120,27 +122,24 @@ async function compile(opts) {
   // I did not find for example how to exclude some files (our unit tests)
   // easily by running typescript directly from NodeJS.
   // So we just spawn a separate process running tsc:
-  await Promise.all([
-    spawnProm(
-      "npx tsc -p",
-      [
-        path.join(ROOT_DIR, opts.devMode ? "tsconfig.dev.json" : "tsconfig.json"),
-        opts.noCheck ? "--noCheck" : "",
-      ],
-      (code) => new Error(`CommonJS compilation process exited with code ${code}`),
-    ),
-    spawnProm(
-      "npx tsc -p",
-      [
-        path.join(
-          ROOT_DIR,
-          opts.devMode ? "tsconfig.dev.commonjs.json" : "tsconfig.commonjs.json",
-        ),
-        opts.noCheck ? "--noCheck" : "",
-      ],
-      (code) => new Error(`es2018 compilation process exited with code ${code}`),
-    ),
-  ]);
+
+  const es6Build = spawnShellProm(
+    "npx tsc -p " +
+      path.join(ROOT_DIR, opts.devMode ? "tsconfig.dev.json" : "tsconfig.json") +
+      (opts.noCheck ? "--noCheck" : ""),
+    (code) => new Error(`es2017 compilation process exited with code ${code}`),
+  );
+  const commonJsBuild = spawnShellProm(
+    "npx tsc -p " +
+      path.join(
+        ROOT_DIR,
+        opts.devMode ? "tsconfig.dev.commonjs.json" : "tsconfig.commonjs.json",
+      ) +
+      (opts.noCheck ? "--noCheck" : ""),
+    (code) => new Error(`CommonJS compilation process exited with code ${code}`),
+  );
+
+  await Promise.all([es6Build, commonJsBuild]);
 }
 
 /**
@@ -154,13 +153,15 @@ async function compile(opts) {
  * has an exit code different than `0`, with the exit code in argument. The
  * value returned by that callback will be the value rejected by the Promise.
  */
-function spawnProm(command, args, errorOnCode) {
+function spawnShellProm(command, errorOnCode) {
   return new Promise((res, rej) => {
-    spawn(command, args, { shell: true, stdio: "inherit" }).on("close", (code) => {
+    const childProcess = spawn(command, { shell: true, stdio: "inherit" });
+    childProcess.on("close", (code) => {
       if (code !== 0) {
         rej(errorOnCode(code));
+      } else {
+        res();
       }
-      res();
     });
   });
 }

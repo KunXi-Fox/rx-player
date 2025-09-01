@@ -104,6 +104,7 @@ import type {
   IWorkerSettings,
   IThumbnailTrackInfo,
   IThumbnailRenderingOptions,
+  INoPlayableTrackEventPayload,
 } from "../../public_types";
 import type { IThumbnailResponse } from "../../transports";
 import arrayFind from "../../utils/array_find";
@@ -491,6 +492,25 @@ class Player extends EventEmitter<IPublicAPIEvent> {
           new WorkerInitializationError("INCOMPATIBLE_ERROR", "Worker unavailable"),
         );
       }
+
+      // check if the user already attach worker before
+      // terminate the previous worker to release the resources
+      if (this._priv_worker !== null) {
+        if (this.state !== "STOPPED") {
+          log.warn(
+            "API: Cannot attach a new worker while a content is playing, please stop the player first.",
+          );
+          return rej(
+            new WorkerInitializationError(
+              "SETUP_ERROR",
+              "Cannot attach a new worker while a content is playing",
+            ),
+          );
+        } else {
+          this._priv_worker.terminate();
+        }
+      }
+
       if (typeof workerSettings.workerUrl === "string") {
         this._priv_worker = new Worker(workerSettings.workerUrl);
       } else {
@@ -865,6 +885,8 @@ class Player extends EventEmitter<IPublicAPIEvent> {
       __priv_patchLastSegmentInSidx,
       url,
       reloadMediaSourceForFirstIncompatiblePeriodSwitch,
+      onAudioTracksNotPlayable,
+      onVideoTracksNotPlayable,
     } = options;
 
     // Perform multiple checks on the given options
@@ -1123,6 +1145,8 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         pendingRequests: new WeakMap(),
         lastResponse: null,
       },
+      onAudioTracksNotPlayable,
+      onVideoTracksNotPlayable,
     };
 
     // Bind events
@@ -1222,6 +1246,7 @@ class Player extends EventEmitter<IPublicAPIEvent> {
       initializer,
       videoElement,
       playbackObserver,
+      isDirectFile,
       currentContentCanceller.signal,
     );
     currentContentCanceller.signal.register(() => {
@@ -2669,6 +2694,10 @@ class Player extends EventEmitter<IPublicAPIEvent> {
     const tracksStore = new TracksStore({
       preferTrickModeTracks: this._priv_preferTrickModeTracks,
       defaultAudioTrackSwitchingMode: contentInfos.defaultAudioTrackSwitchingMode,
+      onTracksNotPlayableForType: {
+        audio: contentInfos.onAudioTracksNotPlayable,
+        video: contentInfos.onVideoTracksNotPlayable,
+      },
     });
     contentInfos.tracksStore = tracksStore;
     tracksStore.addEventListener("newAvailablePeriods", (p) => {
@@ -2688,14 +2717,18 @@ class Player extends EventEmitter<IPublicAPIEvent> {
         this._priv_onAvailableTracksMayHaveChanged(e.trackType);
       }
     });
-    contentInfos.tracksStore.addEventListener("warning", (err) => {
+    tracksStore.addEventListener("warning", (err) => {
       this.trigger("warning", err);
     });
-    contentInfos.tracksStore.addEventListener("error", (err) => {
+    tracksStore.addEventListener("error", (err) => {
       this._priv_onFatalError(err, contentInfos);
     });
 
-    contentInfos.tracksStore.onManifestUpdate(manifest);
+    tracksStore.addEventListener("noPlayableTrack", (noPlayableTrackEvent) => {
+      this.trigger("noPlayableTrack", noPlayableTrackEvent);
+    });
+
+    tracksStore.onManifestUpdate(manifest);
   }
 
   /**
@@ -3454,6 +3487,7 @@ interface IPublicAPIEvent {
   streamEvent: IStreamEvent;
   streamEventSkip: IStreamEvent;
   inbandEvents: IInbandEvent[];
+  noPlayableTrack: INoPlayableTrackEventPayload;
 }
 
 /** State linked to a particular contents loaded by the public API. */
@@ -3558,6 +3592,25 @@ export interface IPublicApiContentInfos {
       thumbnailTrackId: string;
     } | null;
   };
+  /**
+   * Specifies the behavior when all audio tracks are not playable.
+   *
+   * - If set to `"continue"`, the player will proceed to play the content without audio.
+   * - If set to `"error"`, an error will be thrown to indicate that the audio tracks could not be played.
+   *
+   * Note: If neither the audio nor the video tracks are playable, an error will be thrown regardless of this setting.
+   */
+  onAudioTracksNotPlayable: "continue" | "error";
+
+  /**
+   * Specifies the behavior when all video tracks are not playable.
+   *
+   * - If set to `"continue"`, the player will proceed to play the content without video.
+   * - If set to `"error"`, an error will be thrown to indicate that the video tracks could not be played.
+   *
+   * Note: If neither the audio nor the video tracks are playable, an error will be thrown regardless of this setting.
+   */
+  onVideoTracksNotPlayable: "continue" | "error";
 }
 
 export default Player;

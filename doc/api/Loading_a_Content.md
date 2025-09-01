@@ -36,7 +36,6 @@ Can be either:
   If you're using the [minimal build of the player](../Getting_Started/Minimal_Player.md),
   you will need to add at least either one of the following features to be able to play
   DASH contents:
-
   - the `DASH` feature (rely on a generally-sufficient JavaScript parser)
 
   - the `DASH_WASM` feature (backed by a WebAssembly parser, more efficient when handling
@@ -177,7 +176,6 @@ either:
 
 - **fromFirstPosition** (`Number`): relative position from the minimum possible one, in
   seconds. That is:
-
   - for dynamic (live) contents, from the beginning of the buffer depth (as defined by the
     Manifest).
   - for non-dynamic (vod) contents, from the position `0` (this option should be
@@ -185,7 +183,6 @@ either:
 
 - **fromLastPosition** (`Number`): relative position from the maximum possible one, in
   seconds. Should be a negative number:
-
   - for dynamic (e.g. live) contents, it is the difference between the starting position
     and the currently last possible position, as defined by the manifest.
   - for VoD contents, it is the difference between the starting position and the end
@@ -288,7 +285,6 @@ requests. This object can take the following properties (all are optional):
 
 - `segment` (`object|undefined`): If set, segment-specific request configuration. That
   object can contain any of the following properties:
-
   - `maxRetry` (`number|undefined`): Maximum number of times a segment request will be
     retried when an error happen - only on some condition [1].
 
@@ -319,7 +315,6 @@ requests. This object can take the following properties (all are optional):
 
 - `manifest` (`object|undefined`): If set, manifest-specific request configuration. That
   object can contain any of the following properties:
-
   - `maxRetry` (`number|undefined`): Maximum number of times a Manifest request will be
     retried when a request error happen - only on some condition [1]. Defaults to `4`.
 
@@ -706,6 +701,73 @@ Those are the possible values for that option:
   More information about the `"RELOADING"` state can be found in
   [the player states documentation](./Player_States.md).
 
+### onAudioTracksNotPlayable
+
+_type_: `string|undefined`
+
+_defaults_: `"error"`
+
+Specifies the behavior when all audio tracks are not playable - This can occur if the
+device does not support the required audio codecs, or if the content cannot be decrypted,
+for example, due to an insufficient security level.
+
+Those are the possible values for that option:
+
+- `"continue"`: The player will proceed to play the content without audio.
+
+- `"error"`: The player will throw an error `MediaError` with one of the following codes:
+  - `"MANIFEST_INCOMPATIBLE_CODECS_ERROR"`: For this media type (audio or video), all
+    available codecs are unsupported.
+  - `"NO_AUDIO_VIDEO_TRACKS"`: There are no selected or playable audio and video tracks.
+    Therefore, there is nothing to play.
+  - `"NO_PLAYABLE_REPRESENTATION"`: At least one track has a supported codec, but none of
+    the available representations are playable. This may be due to DRM restrictions or
+    other playback constraints.
+
+<div class="note">
+
+- An event [`noPlayableTrack`](./Player_Events.md) will be emitted if no audio tracks are
+  playable.
+
+- If neither the audio nor video tracks are playable, a `"NO_AUDIO_VIDEO_TRACKS"` error
+  will be thrown regardless of this setting.
+
+</div>
+
+### onVideoTracksNotPlayable
+
+_type_: `string|undefined`
+
+_defaults_: `"error"`
+
+Specifies the behavior when all video tracks are not playable - This can occur if the
+device does not support the required video codecs, or if the content cannot be decrypted,
+for example, due to an insufficient security level.
+
+Those are the possible values for that option:
+
+- `"continue"`: The player will proceed to play the content without video. (i.e.,
+  audio-only playback).
+
+- `"error"`: The player will throw an error `MediaError` with one of the following codes:
+  - `"MANIFEST_INCOMPATIBLE_CODECS_ERROR"`: For this media type (audio or video), all
+    available codecs are unsupported.
+  - `"NO_AUDIO_VIDEO_TRACKS"`: There are no selected or playable audio and video tracks.
+    Therefore, there is nothing to play.
+  - `"NO_PLAYABLE_REPRESENTATION"`: At least one track has a supported codec, but none of
+    the available representations are playable. This may be due to DRM restrictions or
+    other playback constraints.
+
+<div class="note">
+
+- An event [`noPlayableTrack`](./Player_Events.md#noplayabletrack) will be emitted if no
+  video tracks are playable.
+
+- If neither the audio nor video tracks are playable, a `"NO_AUDIO_VIDEO_TRACKS"` error
+  will be thrown regardless of this setting.
+
+</div>
+
 ### lowLatencyMode
 
 _type_: `Boolean|undefined`
@@ -927,7 +989,7 @@ The `serverSyncInfos` object contains two keys:
   <div class="note">
   The `performance.now()` API is used here because it is the main API to
   obtain a monotically increasing clock on the client-side.
-  </div</div>
+  </div>
 
 Example:
 
